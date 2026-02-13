@@ -1,0 +1,35 @@
+{
+  "name": "@uniweb/theming",
+  "version": "0.1.0",
+  "description": "Theming utilities for the Uniweb platform — shade generation, CSS generation, theme processing",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "uniweb",
+    "theming"
+  ],
+  "author": "Proximify",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uniweb/theming.git"
+  },
+  "homepage": "https://github.com/uniweb/theming#readme",
+  "bugs": {
+    "url": "https://github.com/uniweb/theming/issues"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.1"
+  }
+}
