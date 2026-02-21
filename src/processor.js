@@ -31,6 +31,10 @@ const DEFAULT_INLINE = {
     color: 'var(--link)',
     'font-weight': '600',
   },
+  callout: {
+    color: 'var(--accent)',
+    'font-weight': '600',
+  },
   muted: {
     color: 'var(--subtle)',
   },
