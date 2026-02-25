@@ -34,6 +34,12 @@ export {
   foundationHasVars,
 } from './processor.js'
 
+// Value normalization
+export { normalizeTokenValue } from './normalize.js'
+
+// Section override CSS
+export { buildSectionOverrides } from './section-overrides.js'
+
 // Default export for convenience
 import { processTheme } from './processor.js'
 import { generateThemeCSS } from './css-generator.js'

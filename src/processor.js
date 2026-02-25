@@ -10,6 +10,7 @@
 
 import { isValidColor, generatePalettes } from './shade-generator.js'
 import { getDefaultColors, getDefaultContextTokens } from './css-generator.js'
+import { normalizeTokenValue } from './normalize.js'
 
 /**
  * Named neutral presets mapping to Tailwind gray families
@@ -87,45 +88,6 @@ const DEFAULT_CODE_THEME = {
   // UI elements
   lineNumber: '#6c7086',      // Line number color
   selection: '#45475a',       // Selection background
-}
-
-/**
- * Valid shade levels for palette references
- */
-const SHADE_LEVELS = new Set([50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950])
-
-/**
- * Resolve context token values to valid CSS.
- *
- * Content authors write palette references as bare names: `primary-500`,
- * `neutral-200`. This is the natural syntax in theme.yml. The processor
- * resolves these to `var(--primary-500)` etc. Plain CSS values (hex, var(),
- * named colors) pass through as-is — that's the escape hatch.
- *
- * @param {string} value - The token value from theme.yml
- * @returns {string} Valid CSS value
- */
-function normalizePaletteRef(value) {
-  if (typeof value !== 'string') return value
-
-  // Already a CSS function (var(), rgb(), etc.) — pass through
-  if (value.includes('(')) return value
-
-  // Hex color — pass through
-  if (value.startsWith('#')) return value
-
-  // Bare palette reference: "primary-500", "--primary-500"
-  const bare = value.replace(/^-{0,2}/, '')
-  const match = bare.match(/^([a-z][a-z0-9]*)-(\d+)$/)
-
-  if (match) {
-    const shade = parseInt(match[2], 10)
-    if (SHADE_LEVELS.has(shade)) {
-      return `var(--${bare})`
-    }
-  }
-
-  return value
 }
 
 /**
@@ -473,7 +435,7 @@ export function processTheme(rawConfig = {}, options = {}) {
     const normalized = {}
 
     for (const [token, value] of Object.entries(overrides)) {
-      normalized[token] = normalizePaletteRef(value)
+      normalized[token] = normalizeTokenValue(value)
     }
 
     contexts[name] = { ...defaultContexts[name], ...normalized }

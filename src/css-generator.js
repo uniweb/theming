@@ -161,7 +161,7 @@ function generateContextCSS(context, tokens = {}) {
 
   const vars = generateVarDeclarations(mergedTokens)
 
-  return `.context-${context} {\n${vars}\n  background-color: var(--section);\n}`
+  return `.context-${context} {\n${vars}\n}`
 }
 
 /**
@@ -327,7 +327,7 @@ export function generateThemeCSS(config = {}) {
   // 3. Default semantic tokens (applied to :root for global defaults)
   const defaultTokens = { ...DEFAULT_CONTEXT_TOKENS.light, ...(contexts.light || {}) }
   const defaultVars = generateVarDeclarations(defaultTokens)
-  sections.push(`/* Default Semantic Tokens */\n:root {\n${defaultVars}\n}`)
+  sections.push(`/* Default Semantic Tokens */\n:root {\n${defaultVars}\n}\n\n/* Section backgrounds — applied once, resolves via context tokens */\n[id^="section-"] {\n  background-color: var(--section);\n}`)
 
   // 4. Context classes
   const contextCSS = [
