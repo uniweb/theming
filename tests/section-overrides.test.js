@@ -256,7 +256,7 @@ describe('buildSectionOverrides', () => {
   })
 
   describe('Auto section with toggle (dual rules)', () => {
-    it('emits dual rules for light and dark', () => {
+    it('scopes light elements to :root:not(.scheme-dark) and dark to .scheme-dark', () => {
       const blocks = [
         makeBlock({
           id: '1',
@@ -273,8 +273,8 @@ describe('buildSectionOverrides', () => {
       ]
       const css = buildSectionOverrides(blocks, { allowToggle: true })
 
-      // Main rule has light tokens
-      expect(css).toContain('#section-1 {\n')
+      // Light elements scoped so they don't leak into dark
+      expect(css).toContain(':root:not(.scheme-dark) #section-1 {\n')
       expect(css).toContain('--heading: var(--primary-900);')
 
       // Dark override rule
@@ -282,7 +282,7 @@ describe('buildSectionOverrides', () => {
       expect(css).toContain('--heading: var(--primary-100);')
     })
 
-    it('includes palette vars only in main rule', () => {
+    it('puts palette and foundation in shared rule, not in scoped rules', () => {
       const blocks = [
         makeBlock({
           id: '1',
@@ -295,40 +295,20 @@ describe('buildSectionOverrides', () => {
                 dark: { heading: 'var(--primary-100)' },
               },
             },
-          },
-        }),
-      ]
-      const css = buildSectionOverrides(blocks, { allowToggle: true })
-
-      // Palette vars should be in the main rule only
-      const mainRule = css.split('.scheme-dark')[0]
-      expect(mainRule).toContain('--primary-500:')
-    })
-
-    it('includes foundation styles only in main rule', () => {
-      const blocks = [
-        makeBlock({
-          id: '1',
-          themeName: '',
-          standardOptions: {
-            colors: {
-              elements: {
-                light: { heading: 'var(--primary-900)' },
-                dark: { heading: 'var(--primary-100)' },
-              },
-            },
             foundationStyles: { gap: '2rem' },
           },
         }),
       ]
       const css = buildSectionOverrides(blocks, { allowToggle: true })
 
-      // Foundation styles should be in main rule
-      const mainRule = css.split('.scheme-dark')[0]
-      expect(mainRule).toContain('--gap: 2rem;')
+      // Shared rule has palette + foundation (context-independent)
+      expect(css).toContain('#section-1 {\n')
+      expect(css).toContain('--primary-500:')
+      expect(css).toContain('--gap: 2rem;')
 
-      // Not duplicated in dark rule
-      const darkRule = css.split('.scheme-dark')[1] || ''
+      // Dark rule should not have palette or foundation
+      const darkRule = css.split('.scheme-dark #section-1')[1] || ''
+      expect(darkRule).not.toContain('--primary-500')
       expect(darkRule).not.toContain('--gap')
     })
 
@@ -347,7 +327,10 @@ describe('buildSectionOverrides', () => {
         }),
       ]
       const css = buildSectionOverrides(blocks, { allowToggle: true })
-      expect(css).not.toContain('.scheme-dark')
+      // No `.scheme-dark #section-1` rule (no dark elements)
+      expect(css).not.toContain('.scheme-dark #section-1 {')
+      // Light elements still scoped
+      expect(css).toContain(':root:not(.scheme-dark) #section-1')
     })
   })
 

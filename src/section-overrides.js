@@ -143,15 +143,18 @@ export function buildSectionOverrides(blocks, appearance = {}) {
     const foundationVars = buildFoundationVars(foundationStyles)
 
     if (isAuto && hasToggle) {
-      // Dual rules: light context + dark override
+      // Dual rules: light-scoped elements + dark-scoped elements
       const lightElementVars = buildElementVars(colors?.elements?.light)
       const darkElementVars = buildElementVars(colors?.elements?.dark)
 
-      // Main rule: palette + light elements + foundation styles
-      const mainVars = [...paletteVars, ...lightElementVars, ...foundationVars]
-      css += buildRule(selector, mainVars)
+      // Context-independent rule: palette + foundation styles (apply in both schemes)
+      const sharedVars = [...paletteVars, ...foundationVars]
+      css += buildRule(selector, sharedVars)
 
-      // Dark override: only dark-specific element tokens
+      // Light-only element overrides (must not leak into dark scheme)
+      css += buildRule(`:root:not(.scheme-dark) ${selector}`, lightElementVars)
+
+      // Dark-only element overrides
       css += buildRule(`.scheme-dark ${selector}`, darkElementVars)
     } else {
       // Single context: when toggle is off, always use 'light' bucket
