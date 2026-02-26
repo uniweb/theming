@@ -154,8 +154,9 @@ export function buildSectionOverrides(blocks, appearance = {}) {
       // Dark override: only dark-specific element tokens
       css += buildRule(`.scheme-dark ${selector}`, darkElementVars)
     } else {
-      // Single context: pinned context or site default
-      const ctx = block.themeName || appearance.default || 'light'
+      // Single context: when toggle is off, always use 'light' bucket
+      // (overrides are context-independent); when toggle is on, use pinned context
+      const ctx = hasToggle ? (block.themeName || 'light') : 'light'
       const elementVars = buildElementVars(colors?.elements?.[ctx])
 
       const allVars = [...paletteVars, ...elementVars, ...foundationVars]

@@ -74,7 +74,7 @@ const DEFAULT_CONTEXT_TOKENS = {
     'info-subtle': '#eff6ff',
   },
   dark: {
-    'section': 'var(--neutral-900)',
+    'section': 'var(--neutral-950)',
     'card': 'var(--neutral-800)',
     'muted': 'var(--neutral-700)',
     'body': 'var(--neutral-50)',
@@ -170,39 +170,11 @@ function generateContextCSS(context, tokens = {}) {
  * @param {Object} config - Appearance configuration
  * @returns {string} CSS for dark scheme support
  */
-function generateDarkSchemeCSS(config = {}) {
-  const { respectSystemPreference = true } = config
+function generateDarkSchemeCSS(config = {}, darkOverrides = {}) {
+  const respectSystemPreference = config.default === 'system'
 
-  // Dark scheme tokens - similar to dark context but at root level
-  const darkTokens = {
-    'section': 'var(--neutral-950)',
-    'card': 'var(--neutral-900)',
-    'muted': 'var(--neutral-800)',
-    'body': 'var(--neutral-50)',
-    'heading': 'white',
-    'subtle': 'var(--neutral-400)',
-    'border': 'var(--neutral-800)',
-    'ring': 'var(--primary-500)',
-    'link': 'var(--primary-400)',
-    'link-hover': 'var(--primary-300)',
-    'accent': 'var(--accent-400)',
-    'primary': 'var(--primary-500)',
-    'primary-foreground': 'white',
-    'primary-hover': 'var(--primary-400)',
-    'primary-border': 'transparent',
-    'secondary': 'var(--neutral-800)',
-    'secondary-foreground': 'var(--neutral-100)',
-    'secondary-hover': 'var(--neutral-700)',
-    'secondary-border': 'var(--neutral-600)',
-    'success': '#4ade80',
-    'success-subtle': '#052e16',
-    'warning': '#fbbf24',
-    'warning-subtle': '#451a03',
-    'error': '#f87171',
-    'error-subtle': '#450a0a',
-    'info': '#60a5fa',
-    'info-subtle': '#172554',
-  }
+  // Merge default dark tokens with user element overrides (same as .context-dark)
+  const darkTokens = { ...DEFAULT_CONTEXT_TOKENS.dark, ...darkOverrides }
 
   const vars = generateVarDeclarations(darkTokens)
 
@@ -343,9 +315,9 @@ export function generateThemeCSS(config = {}) {
     sections.push('/* Foundation Variables */\n' + foundationCSS)
   }
 
-  // 6. Dark scheme support (if enabled)
-  if (appearance.allowToggle || appearance.schemes?.includes('dark')) {
-    sections.push(generateDarkSchemeCSS(appearance))
+  // 6. Dark scheme support (if enabled, default is dark, or follows system preference)
+  if (appearance.allowToggle || appearance.default === 'dark' || appearance.default === 'system' || appearance.schemes?.includes('dark')) {
+    sections.push(generateDarkSchemeCSS(appearance, contexts.dark))
   }
 
   // 7. Site background (if specified in theme.yml)

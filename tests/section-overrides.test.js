@@ -126,7 +126,8 @@ describe('buildSectionOverrides', () => {
           },
         }),
       ]
-      const css = buildSectionOverrides(blocks)
+      // With toggle enabled, pinned sections use their context key
+      const css = buildSectionOverrides(blocks, { allowToggle: true })
       expect(css).toContain('--heading: var(--neutral-100);')
       expect(css).toContain('--accent: var(--primary-500);')
     })
@@ -172,7 +173,7 @@ describe('buildSectionOverrides', () => {
   })
 
   describe('pinned section (single context)', () => {
-    it('uses pinned context for element tokens', () => {
+    it('uses pinned context for element tokens when toggle is on', () => {
       const blocks = [
         makeBlock({
           id: '1',
@@ -187,11 +188,33 @@ describe('buildSectionOverrides', () => {
           },
         }),
       ]
-      const css = buildSectionOverrides(blocks)
+      // With toggle enabled, pinned sections use their context key
+      const css = buildSectionOverrides(blocks, { allowToggle: true })
       // Should use dark context
       expect(css).toContain('--heading: var(--primary-100);')
       // Should NOT contain light context tokens
       expect(css).not.toContain('--heading: var(--primary-900);')
+    })
+
+    it('uses light bucket for pinned sections when toggle is off', () => {
+      const blocks = [
+        makeBlock({
+          id: '1',
+          themeName: 'dark',
+          standardOptions: {
+            colors: {
+              elements: {
+                light: { heading: 'var(--primary-900)' },
+                dark: { heading: 'var(--primary-100)' },
+              },
+            },
+          },
+        }),
+      ]
+      // Without toggle, always use 'light' bucket regardless of themeName
+      const css = buildSectionOverrides(blocks)
+      expect(css).toContain('--heading: var(--primary-900);')
+      expect(css).not.toContain('--heading: var(--primary-100);')
     })
 
     it('emits single rule for pinned section', () => {
