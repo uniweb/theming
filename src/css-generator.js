@@ -153,13 +153,18 @@ function generatePaletteVars(palettes) {
  *
  * @param {string} context - Context name (light, medium, dark)
  * @param {Object} tokens - Token overrides
+ * @param {Object} colorVars - Context-aware foundation color vars: { light: {...}, dark: {...} }
  * @returns {string} CSS for context class
  */
-function generateContextCSS(context, tokens = {}) {
+function generateContextCSS(context, tokens = {}, colorVars = {}) {
   const defaultTokens = DEFAULT_CONTEXT_TOKENS[context] || DEFAULT_CONTEXT_TOKENS.light
   const mergedTokens = { ...defaultTokens, ...tokens }
 
-  const vars = generateVarDeclarations(mergedTokens)
+  // Merge context-aware color vars into the context class
+  const contextColorVars = colorVars[context] || {}
+  const allVars = { ...mergedTokens, ...contextColorVars }
+
+  const vars = generateVarDeclarations(allVars)
 
   return `.context-${context} {\n${vars}\n}`
 }
@@ -168,13 +173,16 @@ function generateContextCSS(context, tokens = {}) {
  * Generate dark scheme CSS (for site-wide dark mode toggle)
  *
  * @param {Object} config - Appearance configuration
+ * @param {Object} darkOverrides - Dark context token overrides
+ * @param {Object} colorVars - Context-aware foundation color vars: { light: {...}, dark: {...} }
  * @returns {string} CSS for dark scheme support
  */
-function generateDarkSchemeCSS(config = {}, darkOverrides = {}) {
+function generateDarkSchemeCSS(config = {}, darkOverrides = {}, colorVars = {}) {
   const respectSystemPreference = config.default === 'system'
 
-  // Merge default dark tokens with user element overrides (same as .context-dark)
-  const darkTokens = { ...DEFAULT_CONTEXT_TOKENS.dark, ...darkOverrides }
+  // Merge default dark tokens with user element overrides and dark color vars
+  const darkColorVars = colorVars.dark || {}
+  const darkTokens = { ...DEFAULT_CONTEXT_TOKENS.dark, ...darkOverrides, ...darkColorVars }
 
   const vars = generateVarDeclarations(darkTokens)
 
@@ -252,7 +260,7 @@ function generateFoundationVars(vars = {}) {
   for (const [name, config] of Object.entries(vars)) {
     const value = typeof config === 'object' ? config.default : config
     if (value !== undefined) {
-      declarations.push(`  --${name}: ${value};`)
+      declarations.push(`  --foundation-${name}: ${value};`)
     }
   }
 
@@ -281,6 +289,7 @@ export function generateThemeCSS(config = {}) {
     fonts = {},
     appearance = {},
     foundationVars = {},
+    colorVars = {},
   } = config
 
   const sections = []
@@ -297,15 +306,17 @@ export function generateThemeCSS(config = {}) {
   sections.push(`/* Color Palettes */\n:root {\n${paletteVars}\n}`)
 
   // 3. Default semantic tokens (applied to :root for global defaults)
-  const defaultTokens = { ...DEFAULT_CONTEXT_TOKENS.light, ...(contexts.light || {}) }
+  // Include light color vars in the :root defaults
+  const lightColorVars = colorVars.light || {}
+  const defaultTokens = { ...DEFAULT_CONTEXT_TOKENS.light, ...(contexts.light || {}), ...lightColorVars }
   const defaultVars = generateVarDeclarations(defaultTokens)
   sections.push(`/* Default Semantic Tokens */\n:root {\n${defaultVars}\n}\n\n/* Section backgrounds — applied once, resolves via context tokens */\n[id^="section-"] {\n  background-color: var(--section);\n}`)
 
   // 4. Context classes
   const contextCSS = [
-    generateContextCSS('light', contexts.light),
-    generateContextCSS('medium', contexts.medium),
-    generateContextCSS('dark', contexts.dark),
+    generateContextCSS('light', contexts.light, colorVars),
+    generateContextCSS('medium', contexts.medium, colorVars),
+    generateContextCSS('dark', contexts.dark, colorVars),
   ]
   sections.push('/* Color Contexts */\n' + contextCSS.join('\n\n'))
 
@@ -317,7 +328,7 @@ export function generateThemeCSS(config = {}) {
 
   // 6. Dark scheme support (if enabled, default is dark, or follows system preference)
   if (appearance.allowToggle || appearance.default === 'dark' || appearance.default === 'system' || appearance.schemes?.includes('dark')) {
-    sections.push(generateDarkSchemeCSS(appearance, contexts.dark))
+    sections.push(generateDarkSchemeCSS(appearance, contexts.dark, colorVars))
   }
 
   // 7. Site background (if specified in theme.yml)

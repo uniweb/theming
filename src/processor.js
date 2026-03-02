@@ -254,7 +254,14 @@ function validateCodeTheme(code) {
 }
 
 /**
+ * Context-aware var types (stored per light/dark context)
+ */
+const CONTEXT_AWARE_TYPES = new Set(['color', 'gradient'])
+
+/**
  * Validate foundation variables configuration
+ *
+ * Accepts enriched var schema: { default, description, label, type, options, group, globalOnly }
  *
  * @param {Object} vars - Foundation variables
  * @returns {{ valid: boolean, errors: string[] }}
@@ -341,30 +348,60 @@ function normalizeAppearance(appearance) {
 /**
  * Merge foundation variables with site overrides
  *
- * @param {Object} foundationVars - Variables from foundation vars.js
+ * Splits variables into two groups based on their type:
+ * - flat: context-independent vars (text, select, untyped) → foundationVars
+ * - colorVars: context-aware vars (color, gradient) → stored per light/dark context
+ *
+ * @param {Object} foundationVars - Variables from foundation vars.js (with enriched schema)
  * @param {Object} siteVars - Site-level variable overrides
- * @returns {Object} Merged variables
+ * @returns {{ flat: Object, colorVars: Object }} Split variables
  */
 function mergeFoundationVars(foundationVars = {}, siteVars = {}) {
-  const merged = {}
+  const flat = {}
+  const colorVars = {}
 
-  // Start with foundation defaults
+  // Start with foundation defaults, split by type
   for (const [name, config] of Object.entries(foundationVars)) {
-    merged[name] = typeof config === 'object' ? { ...config } : { default: config }
+    const cfg = typeof config === 'object' ? { ...config } : { default: config }
+    const isContextAware = CONTEXT_AWARE_TYPES.has(cfg.type)
+
+    if (isContextAware) {
+      // Default value applies to all contexts
+      const defaultVal = cfg.default || ''
+      colorVars[name] = { light: defaultVal, dark: defaultVal }
+    } else {
+      flat[name] = cfg
+    }
   }
 
   // Apply site overrides
   for (const [name, value] of Object.entries(siteVars)) {
-    if (merged[name]) {
-      // Override the default value
-      merged[name].default = value
+    // Look up type from foundation schema
+    const schemaCfg = foundationVars[name]
+    const type = typeof schemaCfg === 'object' ? schemaCfg?.type : undefined
+    const isContextAware = CONTEXT_AWARE_TYPES.has(type)
+
+    if (isContextAware) {
+      if (typeof value === 'object' && value !== null && (value.light || value.dark)) {
+        // Per-context override: { light: '#fff', dark: '#000' }
+        colorVars[name] = { ...(colorVars[name] || {}), ...value }
+      } else {
+        // Scalar override: apply same value to all contexts
+        const strVal = String(value)
+        colorVars[name] = { light: strVal, dark: strVal }
+      }
     } else {
-      // New variable from site
-      merged[name] = { default: value }
+      if (flat[name]) {
+        // Override the default value
+        flat[name].default = value
+      } else {
+        // New variable from site
+        flat[name] = { default: value }
+      }
     }
   }
 
-  return merged
+  return { flat, colorVars }
 }
 
 /**
@@ -451,7 +488,8 @@ export function processTheme(rawConfig = {}, options = {}) {
   const appearance = normalizeAppearance(rawConfig.appearance)
 
   // Merge foundation variables with site overrides
-  const mergedFoundationVars = mergeFoundationVars(
+  // Splits into context-independent (flat) and context-aware (colorVars)
+  const { flat: mergedFoundationVars, colorVars } = mergeFoundationVars(
     foundationVars,
     rawConfig.vars || rawConfig.foundationVars || {}
   )
@@ -483,7 +521,8 @@ export function processTheme(rawConfig = {}, options = {}) {
     contexts,
     fonts,
     appearance,
-    foundationVars: mergedFoundationVars,
+    foundationVars: mergedFoundationVars, // Context-independent vars only
+    colorVars,   // Context-aware vars: { light: {...}, dark: {...} }
     code,        // Code block theme for runtime injection
     background,  // Site-level background CSS value
     inline,      // Inline text style definitions

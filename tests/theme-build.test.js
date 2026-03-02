@@ -96,8 +96,8 @@ describe('Theme Build Pipeline', () => {
         },
       })
 
-      expect(result.css).toContain('--header-height: 64px')
-      expect(result.css).toContain('--sidebar-width: 280px')
+      expect(result.css).toContain('--foundation-header-height: 64px')
+      expect(result.css).toContain('--foundation-sidebar-width: 280px')
     })
 
     it('allows site to override foundation vars', () => {
@@ -114,8 +114,8 @@ describe('Theme Build Pipeline', () => {
         }
       )
 
-      expect(result.css).toContain('--header-height: 80px')
-      expect(result.css).not.toContain('--header-height: 64px')
+      expect(result.css).toContain('--foundation-header-height: 80px')
+      expect(result.css).not.toContain('--foundation-header-height: 64px')
     })
 
     it('includes dark scheme CSS when toggle enabled', () => {
@@ -279,8 +279,8 @@ describe('Theme Build Pipeline', () => {
       expect(result.css).toContain("@import url('https://fonts.googleapis.com")
 
       // Verify foundation vars
-      expect(result.css).toContain('--header-height: 4rem')
-      expect(result.css).toContain('--max-content-width: 80rem')
+      expect(result.css).toContain('--foundation-header-height: 4rem')
+      expect(result.css).toContain('--foundation-max-content-width: 80rem')
 
       // Verify dark scheme support
       expect(result.css).toContain('.scheme-dark')

@@ -32,7 +32,6 @@ function hasOverrides(standardOptions) {
     Object.values(colors.elements).some(
       (ctx) => ctx && Object.keys(ctx).length > 0
     )
-
   return hasColors || hasElements
 }
 
@@ -86,10 +85,43 @@ function buildFoundationVars(styles) {
 
   const vars = []
   for (const [name, value] of Object.entries(styles)) {
-    if (value === '' || value == null) continue
-    vars.push(`  --${name}: ${value};`)
+    if (value === '' || value == null || typeof value === 'object') continue
+    vars.push(`  --foundation-${name}: ${value};`)
   }
   return vars
+}
+
+/**
+ * Split foundation styles into flat (context-independent) and
+ * context-keyed (color/gradient) values.
+ *
+ * Flat values: { "radius-xl": "1.5rem" }
+ * Context-keyed values: { "colorful-bg": { light: "linear-gradient(...)", dark: "..." } }
+ *
+ * @param {Object} styles - Foundation styles object
+ * @returns {{ flat: Object, contexts: Object }} - flat styles + { light: {...}, dark: {...} }
+ */
+function splitFoundationStyles(styles) {
+  if (!styles || Object.keys(styles).length === 0) return { flat: {}, contexts: {} }
+
+  const flat = {}
+  const contexts = {}
+
+  for (const [name, value] of Object.entries(styles)) {
+    if (value == null) continue
+    if (typeof value === 'object') {
+      // Context-keyed: { light: "...", dark: "..." }
+      for (const [ctx, ctxVal] of Object.entries(value)) {
+        if (ctxVal === '' || ctxVal == null) continue
+        if (!contexts[ctx]) contexts[ctx] = {}
+        contexts[ctx][name] = ctxVal
+      }
+    } else {
+      flat[name] = value
+    }
+  }
+
+  return { flat, contexts }
 }
 
 /**
@@ -114,6 +146,7 @@ function buildRule(selector, vars) {
  * - block.stableId || block.id — for CSS selector
  * - block.themeName — '' for Auto, 'light'/'medium'/'dark' for Pinned
  * - block.standardOptions — { colors, foundationStyles }
+ * - block.componentVars — merged meta.js defaults + frontmatter overrides
  *
  * @param {Array<Object>} blocks - Block data objects
  * @param {Object} appearance - Theme appearance config
@@ -127,9 +160,12 @@ export function buildSectionOverrides(blocks, appearance = {}) {
   let css = ''
 
   for (const block of blocks) {
-    if (!hasOverrides(block.standardOptions)) continue
+    const hasStandardOverrides = hasOverrides(block.standardOptions)
+    const hasComponentVars = block.componentVars && Object.keys(block.componentVars).length > 0
 
-    const { colors, foundationStyles } = block.standardOptions
+    if (!hasStandardOverrides && !hasComponentVars) continue
+
+    const { colors, foundationStyles } = block.standardOptions || {}
     const sectionId = block.stableId || block.id
     const selector = `#section-${sectionId}`
 
@@ -139,30 +175,39 @@ export function buildSectionOverrides(blocks, appearance = {}) {
     // Base palette is context-independent (always under 'light' key)
     const paletteVars = buildPaletteVars(colors?.colors?.light)
 
-    // Foundation styles are context-independent
-    const foundationVars = buildFoundationVars(foundationStyles)
+    // Split foundation styles: flat (context-independent) + context-keyed (color/gradient)
+    const { flat: flatFoundation, contexts: ctxFoundation } = splitFoundationStyles(foundationStyles)
+    const foundationVars = buildFoundationVars(flatFoundation)
+
+    // Component-level CSS vars are context-independent
+    const compVars = buildFoundationVars(block.componentVars)
 
     if (isAuto && hasToggle) {
       // Dual rules: light-scoped elements + dark-scoped elements
       const lightElementVars = buildElementVars(colors?.elements?.light)
       const darkElementVars = buildElementVars(colors?.elements?.dark)
 
-      // Context-independent rule: palette + foundation styles (apply in both schemes)
-      const sharedVars = [...paletteVars, ...foundationVars]
+      // Context-aware foundation vars (color/gradient types)
+      const lightFoundationCtx = buildFoundationVars(ctxFoundation.light)
+      const darkFoundationCtx = buildFoundationVars(ctxFoundation.dark)
+
+      // Context-independent rule: palette + flat foundation + component vars (apply in both schemes)
+      const sharedVars = [...paletteVars, ...foundationVars, ...compVars]
       css += buildRule(selector, sharedVars)
 
-      // Light-only element overrides (must not leak into dark scheme)
-      css += buildRule(`:root:not(.scheme-dark) ${selector}`, lightElementVars)
+      // Light-only overrides (elements + context-aware foundation vars)
+      css += buildRule(`:root:not(.scheme-dark) ${selector}`, [...lightElementVars, ...lightFoundationCtx])
 
-      // Dark-only element overrides
-      css += buildRule(`.scheme-dark ${selector}`, darkElementVars)
+      // Dark-only overrides (elements + context-aware foundation vars)
+      css += buildRule(`.scheme-dark ${selector}`, [...darkElementVars, ...darkFoundationCtx])
     } else {
       // Single context: when toggle is off, always use 'light' bucket
       // (overrides are context-independent); when toggle is on, use pinned context
       const ctx = hasToggle ? (block.themeName || 'light') : 'light'
       const elementVars = buildElementVars(colors?.elements?.[ctx])
+      const ctxFoundationVars = buildFoundationVars(ctxFoundation[ctx])
 
-      const allVars = [...paletteVars, ...elementVars, ...foundationVars]
+      const allVars = [...paletteVars, ...elementVars, ...foundationVars, ...compVars, ...ctxFoundationVars]
       css += buildRule(selector, allVars)
     }
   }
