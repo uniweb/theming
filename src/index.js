@@ -24,6 +24,7 @@ export {
   generatePaletteVars,
   getDefaultContextTokens,
   getDefaultColors,
+  extractUsedFamilies,
 } from './css-generator.js'
 
 // Theme processing
@@ -50,14 +51,15 @@ import { generateThemeCSS } from './css-generator.js'
  * @param {Object} themeYml - Raw theme.yml content
  * @param {Object} options - Processing options
  * @param {Object} options.foundationVars - Foundation variables
- * @returns {{ css: string, config: Object, errors: string[], warnings: string[] }}
+ * @returns {{ css: string, links: string, config: Object, errors: string[], warnings: string[] }}
  */
 export function buildTheme(themeYml = {}, options = {}) {
   const { config, errors, warnings } = processTheme(themeYml, options)
-  const css = generateThemeCSS(config)
+  const { css, links } = generateThemeCSS(config)
 
   return {
     css,
+    links,
     config,
     errors,
     warnings,

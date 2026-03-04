@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildTheme } from '../src/index.js'
+import { buildTheme, extractUsedFamilies } from '../src/index.js'
 
 describe('Theme Build Pipeline', () => {
   describe('buildTheme', () => {
@@ -7,6 +7,7 @@ describe('Theme Build Pipeline', () => {
       const result = buildTheme({})
 
       expect(result).toHaveProperty('css')
+      expect(result).toHaveProperty('links')
       expect(result).toHaveProperty('config')
       expect(result).toHaveProperty('errors')
       expect(result).toHaveProperty('warnings')
@@ -76,16 +77,22 @@ describe('Theme Build Pipeline', () => {
       expect(result.css).toContain('--font-heading: Poppins, sans-serif')
     })
 
-    it('includes font imports when provided', () => {
+    it('generates link tags for Google Fonts imports (not @import)', () => {
       const result = buildTheme({
         fonts: {
+          body: 'Inter, sans-serif',
           import: [
             { url: 'https://fonts.googleapis.com/css2?family=Inter' },
           ],
         },
       })
 
-      expect(result.css).toContain("@import url('https://fonts.googleapis.com/css2?family=Inter')")
+      // Should NOT use @import in CSS
+      expect(result.css).not.toContain('@import')
+      // Should produce <link> tags
+      expect(result.links).toContain('fonts.googleapis.com')
+      expect(result.links).toContain('preconnect')
+      expect(result.links).toContain('fonts.gstatic.com')
     })
 
     it('includes foundation vars in CSS', () => {
@@ -276,7 +283,9 @@ describe('Theme Build Pipeline', () => {
       // Verify fonts
       expect(result.css).toContain('--font-body: Inter, sans-serif')
       expect(result.css).toContain('--font-heading: Poppins, sans-serif')
-      expect(result.css).toContain("@import url('https://fonts.googleapis.com")
+      // Font imports should be in links, not CSS
+      expect(result.css).not.toContain('@import')
+      expect(result.links).toContain('fonts.googleapis.com')
 
       // Verify foundation vars
       expect(result.css).toContain('--foundation-header-height: 4rem')
@@ -359,6 +368,173 @@ describe('Theme Build Pipeline', () => {
       expect(result.css).toContain('var(--link)')
       expect(result.css).toContain('span[muted]')
       expect(result.css).toContain('var(--subtle)')
+    })
+  })
+
+  describe('Font Faces', () => {
+    it('generates @font-face rules from faces array', () => {
+      const result = buildTheme({
+        fonts: {
+          body: 'montserrat, sans-serif',
+          faces: [
+            { family: 'montserrat', src: '/fonts/montserrat/normal-normal.woff', weight: 400, style: 'normal', format: 'woff' },
+            { family: 'montserrat', src: '/fonts/montserrat/bold-normal.woff', weight: 700, style: 'normal', format: 'woff' },
+          ],
+        },
+      })
+
+      expect(result.css).toContain('@font-face')
+      expect(result.css).toContain("font-family: montserrat")
+      expect(result.css).toContain("font-weight: 400")
+      expect(result.css).toContain("font-weight: 700")
+      expect(result.css).toContain("font-display: swap")
+      expect(result.css).toContain("/fonts/montserrat/normal-normal.woff")
+    })
+
+    it('filters out faces for unused font families', () => {
+      const result = buildTheme({
+        fonts: {
+          body: 'montserrat, sans-serif',
+          faces: [
+            { family: 'montserrat', src: '/fonts/montserrat/normal-normal.woff', weight: 400, style: 'normal' },
+            { family: 'roboto', src: '/fonts/roboto/normal-normal.woff', weight: 400, style: 'normal' },
+          ],
+        },
+      })
+
+      expect(result.css).toContain('font-family: montserrat')
+      expect(result.css).not.toContain('font-family: roboto')
+    })
+
+    it('includes faces used by heading slot', () => {
+      const result = buildTheme({
+        fonts: {
+          heading: 'Kenia, cursive',
+          faces: [
+            { family: 'Kenia', src: '/fonts/kenia/normal-normal.woff', weight: 400, style: 'normal' },
+          ],
+        },
+      })
+
+      expect(result.css).toContain('font-family: Kenia')
+    })
+
+    it('skips all faces when no font slots are set', () => {
+      const result = buildTheme({
+        fonts: {
+          faces: [
+            { family: 'montserrat', src: '/fonts/montserrat/normal-normal.woff', weight: 400, style: 'normal' },
+          ],
+        },
+      })
+
+      // No body/heading/mono set → usedFamilies is empty → no faces emitted
+      expect(result.css).not.toContain('@font-face')
+    })
+  })
+
+  describe('Font Links', () => {
+    it('merges multiple Google Fonts URLs into one link', () => {
+      const result = buildTheme({
+        fonts: {
+          body: 'Inter, sans-serif',
+          heading: 'Poppins, sans-serif',
+          import: [
+            { url: 'https://fonts.googleapis.com/css2?family=Inter&display=swap' },
+            { url: 'https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&display=swap' },
+          ],
+        },
+      })
+
+      // Should have exactly one stylesheet link (merged)
+      const stylesheetLinks = result.links.match(/<link rel="stylesheet"/g)
+      expect(stylesheetLinks).toHaveLength(1)
+      expect(result.links).toContain('family=Inter')
+      expect(result.links).toContain('family=Poppins')
+    })
+
+    it('includes preconnect for Google Fonts', () => {
+      const result = buildTheme({
+        fonts: {
+          body: 'Inter, sans-serif',
+          import: [
+            { url: 'https://fonts.googleapis.com/css2?family=Inter&display=swap' },
+          ],
+        },
+      })
+
+      expect(result.links).toContain('<link rel="preconnect" href="https://fonts.googleapis.com">')
+      expect(result.links).toContain('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>')
+    })
+
+    it('filters out unused families from Google Fonts URL', () => {
+      const result = buildTheme({
+        fonts: {
+          body: 'Inter, sans-serif',
+          import: [
+            { url: 'https://fonts.googleapis.com/css2?family=Inter&family=Roboto&display=swap' },
+          ],
+        },
+      })
+
+      expect(result.links).toContain('family=Inter')
+      expect(result.links).not.toContain('family=Roboto')
+    })
+
+    it('skips Google Fonts URL entirely when no families match', () => {
+      const result = buildTheme({
+        fonts: {
+          body: 'system-ui, sans-serif',
+          import: [
+            { url: 'https://fonts.googleapis.com/css2?family=Roboto&display=swap' },
+          ],
+        },
+      })
+
+      expect(result.links).toBe('')
+    })
+
+    it('keeps non-Google external URLs as-is', () => {
+      const result = buildTheme({
+        fonts: {
+          body: 'CustomFont, sans-serif',
+          import: [
+            { url: 'https://example.com/fonts/custom.css' },
+          ],
+        },
+      })
+
+      expect(result.links).toContain('<link rel="stylesheet" href="https://example.com/fonts/custom.css">')
+    })
+  })
+
+  describe('extractUsedFamilies', () => {
+    it('extracts family names from font slots', () => {
+      const result = extractUsedFamilies({
+        body: 'Montserrat, system-ui, sans-serif',
+        heading: '"Playfair Display", Georgia, serif',
+      })
+
+      expect(result.has('montserrat')).toBe(true)
+      expect(result.has('playfair display')).toBe(true)
+      // Generic families should be excluded
+      expect(result.has('system-ui')).toBe(false)
+      expect(result.has('sans-serif')).toBe(false)
+      expect(result.has('serif')).toBe(false)
+      expect(result.has('georgia')).toBe(true)
+    })
+
+    it('returns empty set when no slots defined', () => {
+      const result = extractUsedFamilies({})
+      expect(result.size).toBe(0)
+    })
+
+    it('handles single-quoted family names', () => {
+      const result = extractUsedFamilies({
+        body: "'Open Sans', sans-serif",
+      })
+
+      expect(result.has('open sans')).toBe(true)
     })
   })
 

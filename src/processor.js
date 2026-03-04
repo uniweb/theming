@@ -483,6 +483,10 @@ export function processTheme(rawConfig = {}, options = {}) {
     ...DEFAULT_FONTS,
     ...(rawConfig.fonts || {}),
   }
+  // Track which font slots the user explicitly set (vs inherited defaults).
+  // Used by extractUsedFamilies to avoid loading fonts referenced only in defaults.
+  const userFonts = rawConfig.fonts || {}
+  fonts._userSlots = ['body', 'heading', 'mono'].filter((s) => userFonts[s] !== undefined)
 
   // Normalize and process appearance
   const appearance = normalizeAppearance(rawConfig.appearance)

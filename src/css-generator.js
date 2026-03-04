@@ -202,28 +202,169 @@ function generateDarkSchemeCSS(config = {}, darkOverrides = {}, colorVars = {}) 
   return css
 }
 
+// Generic CSS font families that should not trigger font loading
+const GENERIC_FAMILIES = new Set([
+  'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy',
+  'system-ui', 'ui-monospace', 'ui-serif', 'ui-sans-serif', 'ui-rounded',
+  'math', 'emoji', 'fangsong',
+  'inherit', 'initial', 'revert', 'unset',
+])
+
 /**
- * Generate font CSS
+ * Extract font family names actually used by body/heading/mono slots.
+ *
+ * Only considers slots the user explicitly configured (tracked via _userSlots
+ * from the processor). Default system font stacks are ignored so they don't
+ * trigger unnecessary font loading.
  *
  * @param {Object} fonts - Font configuration
- * @returns {string} CSS for fonts
+ * @returns {Set<string>} Lowercase family names referenced by user-set slots
  */
-function generateFontCSS(fonts = {}) {
-  const lines = []
+function extractUsedFamilies(fonts) {
+  const used = new Set()
+  const slots = fonts._userSlots || ['body', 'heading', 'mono']
 
-  // Font imports
-  if (fonts.import && Array.isArray(fonts.import)) {
-    for (const font of fonts.import) {
-      if (font.url) {
-        lines.push(`@import url('${font.url}');`)
+  for (const slot of slots) {
+    const value = fonts[slot]
+    if (!value) continue
+
+    for (const segment of value.split(',')) {
+      const name = segment.trim().replace(/^["']|["']$/g, '').toLowerCase()
+      if (name && !GENERIC_FAMILIES.has(name)) {
+        used.add(name)
       }
-    }
-    if (lines.length > 0) {
-      lines.push('') // Empty line after imports
     }
   }
 
-  // Font family variables
+  return used
+}
+
+/**
+ * Filter a Google Fonts URL to only include families in the used set.
+ *
+ * @param {string} url - Google Fonts CSS URL
+ * @param {Set<string>} usedFamilies - Lowercase family names to keep
+ * @returns {string|null} Filtered URL, or null if no families remain
+ */
+function filterGoogleFontsUrl(url, usedFamilies) {
+  try {
+    const parsed = new URL(url)
+    const familyParams = parsed.searchParams.getAll('family')
+    if (familyParams.length === 0) return url
+
+    const kept = familyParams.filter((param) => {
+      // "Montserrat:wght@400;700" → "montserrat"
+      const name = param.split(':')[0].trim().toLowerCase()
+      return usedFamilies.has(name)
+    })
+
+    if (kept.length === 0) return null
+
+    // Rebuild URL with only kept families
+    parsed.searchParams.delete('family')
+    for (const f of kept) {
+      parsed.searchParams.append('family', f)
+    }
+    return parsed.toString()
+  } catch {
+    return url // malformed URL — keep as-is
+  }
+}
+
+/**
+ * Check whether a URL points to Google Fonts.
+ */
+function isGoogleFontsUrl(url) {
+  try {
+    return new URL(url).hostname === 'fonts.googleapis.com'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Generate font CSS and external link tags.
+ *
+ * @param {Object} fonts - Font configuration
+ * @returns {{ css: string, links: string }} css for <style>, links for <head>
+ */
+function generateFontCSS(fonts = {}) {
+  const cssLines = []
+  const linkTags = []
+
+  const usedFamilies = extractUsedFamilies(fonts)
+
+  // --- @font-face rules from faces[] (filtered to used families) ---
+  if (fonts.faces && Array.isArray(fonts.faces)) {
+    for (const face of fonts.faces) {
+      if (!face.family || !face.src) continue
+      if (!usedFamilies.has(face.family.toLowerCase())) continue
+
+      const format = face.format || (face.src.endsWith('.woff2') ? 'woff2' : 'woff')
+      cssLines.push(
+        `@font-face {`,
+        `  font-family: ${face.family};`,
+        `  src: url('${face.src}') format('${format}');`,
+        `  font-weight: ${face.weight || 400};`,
+        `  font-style: ${face.style || 'normal'};`,
+        `  font-display: swap;`,
+        `}`,
+      )
+    }
+    if (cssLines.length > 0) {
+      cssLines.push('') // blank line after @font-face block
+    }
+  }
+
+  // --- External imports → <link> tags (filtered to used families) ---
+  const googleUrls = []
+
+  if (fonts.import && Array.isArray(fonts.import)) {
+    for (const entry of fonts.import) {
+      if (!entry.url) continue
+
+      if (isGoogleFontsUrl(entry.url)) {
+        const filtered = filterGoogleFontsUrl(entry.url, usedFamilies)
+        if (filtered) googleUrls.push(filtered)
+      } else {
+        linkTags.push(`<link rel="stylesheet" href="${entry.url}">`)
+      }
+    }
+  }
+
+  // Merge Google Fonts into a single <link> with preconnect
+  if (googleUrls.length > 0) {
+    // Collect all family params from all URLs into one
+    const allFamilies = []
+    let display = 'swap'
+    for (const url of googleUrls) {
+      try {
+        const parsed = new URL(url)
+        allFamilies.push(...parsed.searchParams.getAll('family'))
+        if (parsed.searchParams.get('display')) {
+          display = parsed.searchParams.get('display')
+        }
+      } catch {
+        // skip malformed
+      }
+    }
+
+    if (allFamilies.length > 0) {
+      const merged = new URL('https://fonts.googleapis.com/css2')
+      for (const f of allFamilies) {
+        merged.searchParams.append('family', f)
+      }
+      merged.searchParams.set('display', display)
+
+      linkTags.unshift(
+        `<link rel="preconnect" href="https://fonts.googleapis.com">`,
+        `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`,
+        `<link rel="stylesheet" href="${merged.toString()}">`,
+      )
+    }
+  }
+
+  // --- :root font variables ---
   const fontVars = []
   if (fonts.body) {
     fontVars.push(`  --font-body: ${fonts.body};`)
@@ -236,12 +377,15 @@ function generateFontCSS(fonts = {}) {
   }
 
   if (fontVars.length > 0) {
-    lines.push(':root {')
-    lines.push(...fontVars)
-    lines.push('}')
+    cssLines.push(':root {')
+    cssLines.push(...fontVars)
+    cssLines.push('}')
   }
 
-  return lines.join('\n')
+  return {
+    css: cssLines.join('\n'),
+    links: linkTags.join('\n'),
+  }
 }
 
 /**
@@ -280,7 +424,7 @@ function generateFoundationVars(vars = {}) {
  * @param {Object} config.fonts - Font configuration
  * @param {Object} config.appearance - Appearance settings (dark mode, etc.)
  * @param {Object} config.foundationVars - Foundation-specific variables
- * @returns {string} Complete CSS string
+ * @returns {{ css: string, links: string }} CSS string and font link tags
  */
 export function generateThemeCSS(config = {}) {
   const {
@@ -294,10 +438,10 @@ export function generateThemeCSS(config = {}) {
 
   const sections = []
 
-  // 1. Font imports and variables
-  const fontCSS = generateFontCSS(fonts)
-  if (fontCSS) {
-    sections.push('/* Typography */\n' + fontCSS)
+  // 1. Font face rules and variables (links returned separately)
+  const fontResult = generateFontCSS(fonts)
+  if (fontResult.css) {
+    sections.push('/* Typography */\n' + fontResult.css)
   }
 
   // 2. Color palettes
@@ -351,7 +495,10 @@ export function generateThemeCSS(config = {}) {
     }
   }
 
-  return sections.join('\n\n')
+  return {
+    css: sections.join('\n\n'),
+    links: fontResult.links,
+  }
 }
 
 /**
@@ -378,10 +525,16 @@ export function getDefaultColors() {
   return { ...DEFAULT_COLORS }
 }
 
+/**
+ * Extract used font families (useful for testing)
+ */
+export { extractUsedFamilies }
+
 export default {
   generateThemeCSS,
   generateContextCSS,
   generatePaletteVars,
   getDefaultContextTokens,
   getDefaultColors,
+  extractUsedFamilies,
 }
