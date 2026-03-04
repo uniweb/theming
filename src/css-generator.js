@@ -295,6 +295,9 @@ function generateFontCSS(fonts = {}) {
   const usedFamilies = extractUsedFamilies(fonts)
 
   // --- @font-face rules from faces[] (filtered to used families) ---
+  // Also generate <link rel="preload"> hints so browsers fetch fonts early
+  const PRELOAD_TYPE = { woff2: 'font/woff2', woff: 'font/woff', truetype: 'font/ttf', opentype: 'font/otf' }
+
   if (fonts.faces && Array.isArray(fonts.faces)) {
     for (const face of fonts.faces) {
       if (!face.family || !face.src) continue
@@ -310,6 +313,11 @@ function generateFontCSS(fonts = {}) {
         `  font-display: swap;`,
         `}`,
       )
+
+      const mimeType = PRELOAD_TYPE[format]
+      if (mimeType) {
+        linkTags.push(`<link rel="preload" href="${face.src}" as="font" type="${mimeType}" crossorigin>`)
+      }
     }
     if (cssLines.length > 0) {
       cssLines.push('') // blank line after @font-face block
