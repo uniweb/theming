@@ -72,8 +72,8 @@ describe('buildSectionOverrides', () => {
         }),
       ]
       const css = buildSectionOverrides(blocks)
-      expect(css).toContain('--foundation-border-radius: 0.5rem;')
-      expect(css).toContain('--foundation-gap: 2rem;')
+      expect(css).toContain('--border-radius: 0.5rem;')
+      expect(css).toContain('--gap: 2rem;')
     })
 
     it('skips empty string values', () => {
@@ -86,8 +86,8 @@ describe('buildSectionOverrides', () => {
         }),
       ]
       const css = buildSectionOverrides(blocks)
-      expect(css).not.toContain('--foundation-gap')
-      expect(css).toContain('--foundation-padding: 1rem;')
+      expect(css).not.toContain('--gap')
+      expect(css).toContain('--padding: 1rem;')
     })
   })
 
@@ -304,12 +304,12 @@ describe('buildSectionOverrides', () => {
       // Shared rule has palette + foundation (context-independent)
       expect(css).toContain('#section-1 {\n')
       expect(css).toContain('--primary-500:')
-      expect(css).toContain('--foundation-gap: 2rem;')
+      expect(css).toContain('--gap: 2rem;')
 
       // Dark rule should not have palette or foundation
       const darkRule = css.split('.scheme-dark #section-1')[1] || ''
       expect(darkRule).not.toContain('--primary-500')
-      expect(darkRule).not.toContain('--foundation-gap')
+      expect(darkRule).not.toContain('--gap')
     })
 
     it('skips dark rule when no dark elements exist', () => {

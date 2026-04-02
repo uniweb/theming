@@ -86,7 +86,7 @@ function buildFoundationVars(styles) {
   const vars = []
   for (const [name, value] of Object.entries(styles)) {
     if (value === '' || value == null || typeof value === 'object') continue
-    vars.push(`  --foundation-${name}: ${value};`)
+    vars.push(`  --${name}: ${value};`)
   }
   return vars
 }

@@ -396,6 +396,22 @@ function generateFontCSS(fonts = {}) {
   }
 }
 
+// Theme token names reserved by the theming engine — foundation vars must not use these
+const RESERVED_VAR_NAMES = new Set([
+  // Semantic color tokens
+  'section', 'card', 'muted', 'body', 'heading', 'subtle',
+  'border', 'ring', 'link', 'link-hover', 'accent',
+  // Action tokens
+  'primary', 'primary-foreground', 'primary-hover', 'primary-border',
+  'secondary', 'secondary-foreground', 'secondary-hover', 'secondary-border',
+  // Status tokens
+  'success', 'success-subtle', 'warning', 'warning-subtle',
+  'error', 'error-subtle', 'info', 'info-subtle',
+])
+
+// Palette shade pattern: primary-50, neutral-950, accent-300, etc.
+const PALETTE_SHADE_RE = /^(primary|secondary|accent|neutral)-\d+$/
+
 /**
  * Generate foundation-specific CSS variables
  *
@@ -410,9 +426,15 @@ function generateFoundationVars(vars = {}) {
   const declarations = []
 
   for (const [name, config] of Object.entries(vars)) {
+    if (RESERVED_VAR_NAMES.has(name) || PALETTE_SHADE_RE.test(name)) {
+      console.warn(
+        `Warning: Foundation var '${name}' collides with a theme token. ` +
+        `Rename it to avoid unexpected behavior (e.g., '${name}-value' or '${name}-size').`
+      )
+    }
     const value = typeof config === 'object' ? config.default : config
     if (value !== undefined) {
-      declarations.push(`  --foundation-${name}: ${value};`)
+      declarations.push(`  --${name}: ${value};`)
     }
   }
 
