@@ -22,6 +22,7 @@ export {
   generateThemeCSS,
   generateContextCSS,
   generatePaletteVars,
+  generateFoundationVars,
   getDefaultContextTokens,
   getDefaultColors,
   extractUsedFamilies,

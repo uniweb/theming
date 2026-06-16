@@ -418,7 +418,7 @@ const PALETTE_SHADE_RE = /^(primary|secondary|accent|neutral)-\d+$/
  * @param {Object} vars - Foundation variables from vars.js
  * @returns {string} CSS variable declarations
  */
-function generateFoundationVars(vars = {}) {
+export function generateFoundationVars(vars = {}) {
   if (!vars || Object.keys(vars).length === 0) {
     return ''
   }
