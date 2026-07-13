@@ -358,16 +358,22 @@ function generateFontCSS(fonts = {}) {
     }
 
     if (allFamilies.length > 0) {
-      const merged = new URL('https://fonts.googleapis.com/css2')
-      for (const f of allFamilies) {
-        merged.searchParams.append('family', f)
-      }
-      merged.searchParams.set('display', display)
+      // Build the css2 URL by hand. Google's css2 axis syntax uses ':' ',' ';'
+      // '@' as LITERAL separators and '+' for spaces. URLSearchParams.toString()
+      // percent-encodes all of them (%3A/%2C/%3B/%40), producing a URL that
+      // parses but is non-canonical — it only loads because Google's server
+      // decodes it leniently. A strict Google Fonts mirror/proxy or a future API
+      // change could reject it. Emit the canonical literal form instead.
+      // (getAll() already decoded '+'/'%20' to spaces, so restore spaces to '+'.)
+      const familyQuery = allFamilies
+        .map((f) => `family=${f.trim().replace(/\s+/g, '+')}`)
+        .join('&')
+      const href = `https://fonts.googleapis.com/css2?${familyQuery}&display=${display}`
 
       linkTags.unshift(
         `<link rel="preconnect" href="https://fonts.googleapis.com">`,
         `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`,
-        `<link rel="stylesheet" href="${merged.toString()}">`,
+        `<link rel="stylesheet" href="${href}">`,
       )
     }
   }

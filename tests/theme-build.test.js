@@ -124,6 +124,26 @@ describe('Theme Build Pipeline', () => {
       expect(result.links).toContain('fonts.gstatic.com')
     })
 
+    it('emits canonical css2 URLs (literal axis separators, not percent-encoded)', () => {
+      const result = buildTheme({
+        fonts: {
+          body: 'Amatic SC, cursive',
+          heading: 'DM Serif Display, serif',
+          import: [
+            { url: 'https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital,wght@0,400;1,400&display=swap' },
+            { url: 'https://fonts.googleapis.com/css2?family=Amatic%20SC:wght@400;700&display=swap' },
+          ],
+        },
+      })
+
+      const styleHref = result.links.match(/rel="stylesheet" href="([^"]+)"/)[1]
+      // css2 axis chars ( : , @ ; ) must stay literal — Google's canonical form.
+      // URLSearchParams.toString() would percent-encode them (%3A/%2C/%40/%3B).
+      expect(styleHref).not.toMatch(/%3A|%2C|%40|%3B/i)
+      expect(styleHref).toContain('family=DM+Serif+Display:ital,wght@0,400;1,400')
+      expect(styleHref).toContain('family=Amatic+SC:wght@400;700')
+    })
+
     it('includes foundation vars in CSS', () => {
       const result = buildTheme({}, {
         foundationVars: {
