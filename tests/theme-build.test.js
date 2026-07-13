@@ -77,6 +77,35 @@ describe('Theme Build Pipeline', () => {
       expect(result.css).toContain('--font-heading: Poppins, sans-serif')
     })
 
+    it('applies site-set font slots to elements (not just :root vars)', () => {
+      const result = buildTheme({
+        fonts: {
+          body: 'Inter, sans-serif',
+          heading: 'Poppins, sans-serif',
+          mono: 'Fira Code, monospace',
+        },
+      })
+
+      // Vars alone are orphaned — there must be an application rule per slot.
+      expect(result.css).toContain('body { font-family: var(--font-body); }')
+      expect(result.css).toContain('h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); }')
+      expect(result.css).toContain('code, pre, kbd, samp { font-family: var(--font-mono); }')
+    })
+
+    it('does not apply font rules for slots the site did not set', () => {
+      // Only heading is site-set; body/mono fall back to foundation defaults
+      // and must NOT get a forced application rule.
+      const result = buildTheme({
+        fonts: {
+          heading: 'Poppins, sans-serif',
+        },
+      })
+
+      expect(result.css).toContain('h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); }')
+      expect(result.css).not.toContain('body { font-family: var(--font-body); }')
+      expect(result.css).not.toContain('code, pre, kbd, samp { font-family: var(--font-mono); }')
+    })
+
     it('generates link tags for Google Fonts imports (not @import)', () => {
       const result = buildTheme({
         fonts: {

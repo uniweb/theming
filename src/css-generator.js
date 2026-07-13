@@ -390,6 +390,30 @@ function generateFontCSS(fonts = {}) {
     cssLines.push('}')
   }
 
+  // --- Apply font families to elements ---
+  // Defining --font-* on :root is not enough — something must actually set
+  // `font-family` on rendered elements, the same way colors get an application
+  // rule ([id^="section-"] { background-color: var(--section) }). Without this
+  // the font vars are orphaned and text never picks them up, even though the
+  // vars are set and the @import/@font-face load. Only apply slots the SITE
+  // explicitly set (fonts._userSlots) so a foundation's own default typography
+  // is left untouched when theme.yml doesn't override that slot.
+  const userSlots = new Set(fonts._userSlots || [])
+  const applyRules = []
+  if (userSlots.has('body')) {
+    applyRules.push('body { font-family: var(--font-body); }')
+  }
+  if (userSlots.has('heading')) {
+    applyRules.push('h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); }')
+  }
+  if (userSlots.has('mono')) {
+    applyRules.push('code, pre, kbd, samp { font-family: var(--font-mono); }')
+  }
+  if (applyRules.length > 0) {
+    cssLines.push('')
+    cssLines.push(...applyRules)
+  }
+
   return {
     css: cssLines.join('\n'),
     links: linkTags.join('\n'),
