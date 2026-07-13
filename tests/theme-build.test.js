@@ -88,7 +88,7 @@ describe('Theme Build Pipeline', () => {
 
       // Vars alone are orphaned — there must be an application rule per slot.
       expect(result.css).toContain('body { font-family: var(--font-body); }')
-      expect(result.css).toContain('h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); }')
+      expect(result.css).toContain('h1, h2, h3 { font-family: var(--font-heading); }')
       expect(result.css).toContain('code, pre, kbd, samp { font-family: var(--font-mono); }')
     })
 
@@ -101,7 +101,7 @@ describe('Theme Build Pipeline', () => {
         },
       })
 
-      expect(result.css).toContain('h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); }')
+      expect(result.css).toContain('h1, h2, h3 { font-family: var(--font-heading); }')
       expect(result.css).not.toContain('body { font-family: var(--font-body); }')
       expect(result.css).not.toContain('code, pre, kbd, samp { font-family: var(--font-mono); }')
     })

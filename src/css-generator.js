@@ -404,7 +404,10 @@ function generateFontCSS(fonts = {}) {
     applyRules.push('body { font-family: var(--font-body); }')
   }
   if (userSlots.has('heading')) {
-    applyRules.push('h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); }')
+    // Only the prominent headings — display/heading faces are drawn for large
+    // sizes; h4–h6 usually render at or near body size where a display face
+    // reads awkwardly, so they stay in the body font.
+    applyRules.push('h1, h2, h3 { font-family: var(--font-heading); }')
   }
   if (userSlots.has('mono')) {
     applyRules.push('code, pre, kbd, samp { font-family: var(--font-mono); }')
