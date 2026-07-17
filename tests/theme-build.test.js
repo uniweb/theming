@@ -482,6 +482,80 @@ describe('Theme Build Pipeline', () => {
     })
   })
 
+  describe('Foundation font vars (typefaces beyond the 3 roles)', () => {
+    it('keeps a @font-face whose family is referenced only by a foundation font-* var', () => {
+      const result = buildTheme(
+        {
+          fonts: {
+            body: 'Inter, sans-serif',
+            faces: [{ family: 'Fraunces', src: '/fonts/fraunces.woff2', weight: 400 }],
+          },
+        },
+        { foundationVars: { 'font-serif': { default: 'Fraunces, Georgia, serif' } } }
+      )
+
+      // Without foundation-var awareness the Fraunces face would be filtered
+      // out — no body/heading/mono slot references it.
+      expect(result.css).toContain('@font-face')
+      expect(result.css).toContain('font-family: Fraunces')
+      // And the var is emitted so `font-serif` utilities resolve to it.
+      expect(result.css).toContain('--font-serif: Fraunces')
+    })
+
+    it('keeps a Google import family referenced only by a foundation font-* var', () => {
+      const result = buildTheme(
+        {
+          fonts: {
+            body: 'Inter, sans-serif',
+            import: [{ url: 'https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600&display=swap' }],
+          },
+        },
+        { foundationVars: { 'font-display': { default: 'Fraunces, serif' } } }
+      )
+
+      expect(result.links).toContain('Fraunces')
+    })
+
+    it('loads the site-overridden family, not the foundation default', () => {
+      const result = buildTheme(
+        {
+          fonts: {
+            body: 'Inter, sans-serif',
+            faces: [{ family: 'Fraunces', src: '/fonts/fraunces.woff2', weight: 400 }],
+          },
+          // Site retunes the foundation's editorial face default (Georgia) to Fraunces.
+          vars: { 'font-serif': 'Fraunces, Georgia, serif' },
+        },
+        { foundationVars: { 'font-serif': { default: "Georgia, 'Times New Roman', serif" } } }
+      )
+
+      expect(result.css).toContain('font-family: Fraunces')
+      expect(result.css).toContain('--font-serif: Fraunces')
+    })
+
+    it('does not treat non-family font vars (weight/size) as typefaces', () => {
+      const used = extractUsedFamilies(
+        { _userSlots: ['body'], body: 'Inter, sans-serif' },
+        { 'font-weight': { default: '700' }, 'font-size': { default: '18px' } }
+      )
+      expect(used.has('inter')).toBe(true)
+      expect(used.has('700')).toBe(false)
+      expect(used.has('18px')).toBe(false)
+    })
+
+    it('extractUsedFamilies reads families from font-* vars in both shapes', () => {
+      const used = extractUsedFamilies(
+        { _userSlots: [] },
+        { 'font-serif': { default: 'Fraunces, serif' }, 'font-display': 'Anton, sans-serif' }
+      )
+      expect(used.has('fraunces')).toBe(true)
+      expect(used.has('anton')).toBe(true)
+      // Generic keywords are still dropped.
+      expect(used.has('serif')).toBe(false)
+      expect(used.has('sans-serif')).toBe(false)
+    })
+  })
+
   describe('Font Links', () => {
     it('merges multiple Google Fonts URLs into one link', () => {
       const result = buildTheme({

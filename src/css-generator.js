@@ -210,30 +210,54 @@ const GENERIC_FAMILIES = new Set([
   'inherit', 'initial', 'revert', 'unset',
 ])
 
+// Foundation `font-*` vars that are CSS longhands, not typefaces — never
+// treat their value as a family to load.
+const NON_FAMILY_FONT_VARS = new Set([
+  'font-weight', 'font-style', 'font-size', 'font-stretch',
+  'font-feature-settings', 'font-variation-settings', 'font-variant',
+  'font-kerning', 'font-optical-sizing', 'font-synthesis',
+  'font-size-adjust', 'font-smoothing', 'font-palette', 'font-language-override',
+])
+
 /**
- * Extract font family names actually used by body/heading/mono slots.
+ * Extract the font family names the site actually references.
  *
- * Only considers slots the user explicitly configured (tracked via _userSlots
- * from the processor). Default system font stacks are ignored so they don't
- * trigger unnecessary font loading.
+ * Two sources count as "used":
+ *   1. The `body`/`heading`/`mono` slots the user explicitly configured
+ *      (tracked via _userSlots from the processor). Default system stacks are
+ *      ignored so they don't trigger unnecessary font loading.
+ *   2. Foundation `font-*` vars (e.g. an editorial `font-serif`). A foundation
+ *      can declare a themeable typeface beyond the three built-in roles; the
+ *      site sets its value and loads it with `fonts.import` / `fonts.faces`.
+ *      Without counting these, such a family is filtered out as "unused" and
+ *      never loads — capping a foundation at the three role slots.
  *
- * @param {Object} fonts - Font configuration
- * @returns {Set<string>} Lowercase family names referenced by user-set slots
+ * @param {Object} fonts - Font configuration (may carry _userSlots)
+ * @param {Object} [foundationVars] - Resolved foundation vars (name → { default } | value)
+ * @returns {Set<string>} Lowercase family names referenced by the site
  */
-function extractUsedFamilies(fonts) {
+function extractUsedFamilies(fonts, foundationVars = {}) {
   const used = new Set()
-  const slots = fonts._userSlots || ['body', 'heading', 'mono']
 
-  for (const slot of slots) {
-    const value = fonts[slot]
-    if (!value) continue
-
+  const addFamiliesFrom = (value) => {
+    if (typeof value !== 'string') return
     for (const segment of value.split(',')) {
       const name = segment.trim().replace(/^["']|["']$/g, '').toLowerCase()
-      if (name && !GENERIC_FAMILIES.has(name)) {
-        used.add(name)
-      }
+      // Skip generics, empties, and numeric/length tokens (a weight "600" or
+      // size "1rem" a non-family font-* var might carry).
+      if (!name || GENERIC_FAMILIES.has(name) || /^\d/.test(name)) continue
+      used.add(name)
     }
+  }
+
+  const slots = fonts._userSlots || ['body', 'heading', 'mono']
+  for (const slot of slots) {
+    addFamiliesFrom(fonts[slot])
+  }
+
+  for (const [name, config] of Object.entries(foundationVars)) {
+    if (!name.startsWith('font-') || NON_FAMILY_FONT_VARS.has(name)) continue
+    addFamiliesFrom(typeof config === 'object' ? config?.default : config)
   }
 
   return used
@@ -288,11 +312,11 @@ function isGoogleFontsUrl(url) {
  * @param {Object} fonts - Font configuration
  * @returns {{ css: string, links: string }} css for <style>, links for <head>
  */
-function generateFontCSS(fonts = {}) {
+function generateFontCSS(fonts = {}, foundationVars = {}) {
   const cssLines = []
   const linkTags = []
 
-  const usedFamilies = extractUsedFamilies(fonts)
+  const usedFamilies = extractUsedFamilies(fonts, foundationVars)
 
   // --- @font-face rules from faces[] (filtered to used families) ---
   // Also generate <link rel="preload"> hints so browsers fetch fonts early
@@ -502,7 +526,9 @@ export function generateThemeCSS(config = {}) {
   const sections = []
 
   // 1. Font face rules and variables (links returned separately)
-  const fontResult = generateFontCSS(fonts)
+  //    foundationVars is passed so families referenced by a foundation `font-*`
+  //    var (e.g. an editorial `font-serif`) survive the used-family filter.
+  const fontResult = generateFontCSS(fonts, foundationVars)
   if (fontResult.css) {
     sections.push('/* Typography */\n' + fontResult.css)
   }
