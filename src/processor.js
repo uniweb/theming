@@ -60,6 +60,52 @@ const DEFAULT_FONTS = {
 }
 
 /**
+ * Default application selectors for the three built-in font roles. These are
+ * *defaults*: a foundation can redefine a role's `applyTo` (or add new roles)
+ * via a `type: 'font'` var, so the roles and their selectors are one editable
+ * font-var namespace, not a fixed contract. `heading` is scoped to h1–h3 (h4–h6
+ * render near body size, where a display face reads awkwardly); `code` (formerly
+ * `mono`) owns `--font-code`.
+ */
+const DEFAULT_FONT_ROLES = {
+  body: ['body'],
+  heading: ['h1', 'h2', 'h3'],
+  code: ['code', 'pre', 'kbd', 'samp'],
+}
+
+// Foundation `font-*` vars that are CSS longhands, not typefaces to load.
+const NON_FAMILY_FONT_VARS = new Set([
+  'font-weight', 'font-style', 'font-size', 'font-stretch',
+  'font-feature-settings', 'font-variation-settings', 'font-variant',
+  'font-kerning', 'font-optical-sizing', 'font-synthesis',
+  'font-size-adjust', 'font-smoothing', 'font-palette', 'font-language-override',
+])
+
+/**
+ * A foundation var is a themeable typeface (font role) when it declares
+ * `type: 'font'`. Deprecated fallback: a `font-*`-prefixed name that isn't a
+ * known CSS longhand — kept so foundations predating the convention still work.
+ */
+function isFontVar(name, config) {
+  const type = typeof config === 'object' ? config?.type : undefined
+  if (type === 'font') return true
+  return name.startsWith('font-') && !NON_FAMILY_FONT_VARS.has(name)
+}
+
+// A font role's canonical name is bare; `font-X` and `X` are the same role.
+function normalizeFontRoleName(name) {
+  return name.startsWith('font-') ? name.slice(5) : name
+}
+
+// Normalize applyTo to an array of trimmed selectors (or null).
+function normalizeApplyTo(applyTo) {
+  if (applyTo == null) return null
+  const list = Array.isArray(applyTo) ? applyTo : String(applyTo).split(',')
+  const cleaned = list.map((s) => String(s).trim()).filter(Boolean)
+  return cleaned.length ? cleaned : null
+}
+
+/**
  * Default code block theme configuration
  * Uses Shiki CSS variable names for compatibility
  * These values are NOT converted to CSS here - the kit's Code component
@@ -481,22 +527,16 @@ export function processTheme(rawConfig = {}, options = {}) {
     contexts[name] = { ...defaultContexts[name], ...normalized }
   }
 
-  // Process fonts. `mono` is the deprecated name for the `code` role — accept it
-  // as an alias so existing sites keep working, with a one-line nudge.
+  // Fonts: `mono` is the deprecated name for the `code` role — accept it as an
+  // alias so existing sites keep working, with a one-line nudge. The full
+  // resolution into the font-role namespace happens after foundation vars are
+  // merged (below), so a foundation's font vars can redefine/extend the roles.
   const rawFonts = { ...(rawConfig.fonts || {}) }
   if (rawFonts.mono !== undefined && rawFonts.code === undefined) {
     warnings.push('theme.yml `fonts.mono` is deprecated — rename it to `fonts.code` (the code/monospace role).')
     rawFonts.code = rawFonts.mono
   }
   delete rawFonts.mono
-  const fonts = {
-    ...DEFAULT_FONTS,
-    ...rawFonts,
-  }
-  // Track which font slots the user explicitly set (vs inherited defaults).
-  // Used by extractUsedFamilies to avoid loading fonts referenced only in defaults.
-  const userFonts = rawFonts
-  fonts._userSlots = ['body', 'heading', 'code'].filter((s) => userFonts[s] !== undefined)
 
   // Normalize and process appearance
   const appearance = normalizeAppearance(rawConfig.appearance)
@@ -512,6 +552,74 @@ export function processTheme(rawConfig = {}, options = {}) {
   const foundationValidation = validateFoundationVars(mergedFoundationVars)
   if (!foundationValidation.valid) {
     warnings.push(...foundationValidation.errors)
+  }
+
+  // Resolve the font-role namespace. The three roles are framework *defaults*;
+  // a foundation `type: 'font'` var can redefine a role (retarget applyTo /
+  // change the default) or add a new role; the site sets any role's value in
+  // `fonts:` (or `vars:`). Everything lands in one map so each --font-<name> is
+  // emitted once, site-value-wins. Font vars are split OUT of foundationVars so
+  // they aren't also emitted by the generic foundation-var path (which would
+  // double-write --font-<name>, the later foundation default clobbering the site).
+  const fontRoles = {}
+  for (const [name, applyTo] of Object.entries(DEFAULT_FONT_ROLES)) {
+    fontRoles[name] = {
+      value: DEFAULT_FONTS[name],
+      applyTo: [...applyTo],
+      foundationOwned: false,
+      userSet: false,
+    }
+  }
+
+  const nonFontVars = {}
+  for (const [rawName, cfg] of Object.entries(mergedFoundationVars)) {
+    if (!isFontVar(rawName, cfg)) {
+      nonFontVars[rawName] = cfg
+      continue
+    }
+    const name = normalizeFontRoleName(rawName)
+    const cfgObj = typeof cfg === 'object' ? cfg : { default: cfg }
+    const existing = fontRoles[name]
+    fontRoles[name] = {
+      value: cfgObj.default ?? existing?.value,
+      applyTo:
+        cfgObj.applyTo !== undefined
+          ? normalizeApplyTo(cfgObj.applyTo)
+          : existing?.applyTo ?? null,
+      foundationOwned: true,
+      userSet: false,
+    }
+  }
+
+  const FONT_LOADING_KEYS = new Set(['import', 'faces'])
+  for (const [rawName, value] of Object.entries(rawFonts)) {
+    if (FONT_LOADING_KEYS.has(rawName)) continue
+    const name = normalizeFontRoleName(rawName)
+    const existing = fontRoles[name]
+    fontRoles[name] = {
+      value,
+      applyTo: existing?.applyTo ?? null,
+      foundationOwned: existing?.foundationOwned ?? false,
+      userSet: true,
+    }
+  }
+
+  // Per-role application + loading flags. apply: emit the font-family rule when
+  // the role has selectors AND is "intended" (site-set or foundation-owned) —
+  // a bare framework default is never forced onto a foundation's own typography.
+  // load: pull the family through the @font-face / import filter.
+  for (const role of Object.values(fontRoles)) {
+    const intended = role.foundationOwned || role.userSet
+    role.apply = intended && Array.isArray(role.applyTo) && role.applyTo.length > 0
+    role.load = intended
+  }
+
+  // config.fonts: name→value (for the Theme API) plus import/faces (loading).
+  const fonts = {}
+  if (rawFonts.import !== undefined) fonts.import = rawFonts.import
+  if (rawFonts.faces !== undefined) fonts.faces = rawFonts.faces
+  for (const [name, role] of Object.entries(fontRoles)) {
+    fonts[name] = role.value
   }
 
   // Process code block theme
@@ -533,9 +641,10 @@ export function processTheme(rawConfig = {}, options = {}) {
     colors,      // Raw colors for CSS generator
     palettes,    // Generated palettes for Theme class
     contexts,
-    fonts,
+    fonts,       // name→value (+ import/faces) for the Theme API and loading
+    fontRoles,   // resolved font-role map (value/applyTo/apply/load) for CSS gen
     appearance,
-    foundationVars: mergedFoundationVars, // Context-independent vars only
+    foundationVars: nonFontVars, // NON-font vars only (font vars live in fontRoles)
     colorVars,   // Context-aware vars: { light: {...}, dark: {...} }
     code,        // Code block theme for runtime injection
     background,  // Site-level background CSS value

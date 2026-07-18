@@ -210,78 +210,36 @@ const GENERIC_FAMILIES = new Set([
   'inherit', 'initial', 'revert', 'unset',
 ])
 
-// Foundation `font-*` vars that are CSS longhands, not typefaces — never
-// treat their value as a family to load.
-const NON_FAMILY_FONT_VARS = new Set([
-  'font-weight', 'font-style', 'font-size', 'font-stretch',
-  'font-feature-settings', 'font-variation-settings', 'font-variant',
-  'font-kerning', 'font-optical-sizing', 'font-synthesis',
-  'font-size-adjust', 'font-smoothing', 'font-palette', 'font-language-override',
-])
-
-// Built-in font roles → the elements the framework paints them onto.
-// `heading` is scoped to h1–h3: display/heading faces are drawn for large
-// sizes, and h4–h6 usually render near body size where a display face reads
-// awkwardly, so the minor headings stay in the body font. `code` (formerly
-// `mono`) is the code/monospace role — it owns `--font-code`, decoupled from
-// Tailwind's `font-mono` utility scale, which a foundation now controls via its
-// own `font-mono` var.
-const FONT_ROLE_SELECTORS = {
-  body: 'body',
-  heading: 'h1, h2, h3',
-  code: 'code, pre, kbd, samp',
-}
-
-// A foundation var is a themeable typeface when it declares `type: 'font'`.
-// Deprecated fallback: a `font-*`-prefixed name that isn't a known CSS longhand
-// — kept so foundations predating the `type: 'font'` convention still load
-// their families and honor `applyTo`.
-function isFontVar(name, config) {
-  const type = typeof config === 'object' ? config?.type : undefined
-  if (type === 'font') return true
-  return name.startsWith('font-') && !NON_FAMILY_FONT_VARS.has(name)
-}
+// Font-role classification (isFontVar, NON_FAMILY_FONT_VARS) and the default
+// role selectors now live in processor.js, which resolves the whole font-role
+// namespace (built-in roles + foundation redefinitions/additions) into config.
 
 /**
- * Extract the font family names the site actually references.
+ * Extract the font family names to load, from a resolved font-role map.
  *
- * Two sources count as "used":
- *   1. The `body`/`heading`/`code` slots the user explicitly configured
- *      (tracked via _userSlots from the processor). Default system stacks are
- *      ignored so they don't trigger unnecessary font loading.
- *   2. Foundation font vars — declared `type: 'font'` (or, as a deprecated
- *      fallback, a `font-*` name), e.g. an editorial `font-serif`. A foundation
- *      can declare a themeable typeface beyond the three built-in roles; the
- *      site sets its value and loads it with `fonts.import` / `fonts.faces`.
- *      Without counting these, such a family is filtered out as "unused" and
- *      never loads — capping a foundation at the three role slots.
+ * A role contributes its family only when the processor flagged it `load`
+ * (site-set or foundation-declared — not a bare framework default like
+ * `system-ui`). Generic keywords and numeric tokens are skipped, so a role's
+ * fallback stack never triggers an unnecessary fetch.
  *
- * @param {Object} fonts - Font configuration (may carry _userSlots)
- * @param {Object} [foundationVars] - Resolved foundation vars (name → { default, type, applyTo } | value)
- * @returns {Set<string>} Lowercase family names referenced by the site
+ * @param {Object} fontRoles - Resolved roles: name → { value, applyTo, apply, load }
+ * @returns {Set<string>} Lowercase family names to load (@font-face / import filter)
  */
-function extractUsedFamilies(fonts, foundationVars = {}) {
+function extractUsedFamilies(fontRoles = {}) {
   const used = new Set()
 
   const addFamiliesFrom = (value) => {
     if (typeof value !== 'string') return
     for (const segment of value.split(',')) {
       const name = segment.trim().replace(/^["']|["']$/g, '').toLowerCase()
-      // Skip generics, empties, and numeric/length tokens (a weight "600" or
-      // size "1rem" a non-family font-* var might carry).
+      // Skip generics, empties, and numeric/length tokens.
       if (!name || GENERIC_FAMILIES.has(name) || /^\d/.test(name)) continue
       used.add(name)
     }
   }
 
-  const slots = fonts._userSlots || ['body', 'heading', 'code']
-  for (const slot of slots) {
-    addFamiliesFrom(fonts[slot])
-  }
-
-  for (const [name, config] of Object.entries(foundationVars)) {
-    if (!isFontVar(name, config)) continue
-    addFamiliesFrom(typeof config === 'object' ? config?.default : config)
+  for (const role of Object.values(fontRoles)) {
+    if (role && role.load) addFamiliesFrom(role.value)
   }
 
   return used
@@ -333,14 +291,15 @@ function isGoogleFontsUrl(url) {
 /**
  * Generate font CSS and external link tags.
  *
- * @param {Object} fonts - Font configuration
+ * @param {Object} fontRoles - Resolved font roles (name → { value, applyTo, apply, load })
+ * @param {Object} fonts - Font loading config (import[] / faces[])
  * @returns {{ css: string, links: string }} css for <style>, links for <head>
  */
-function generateFontCSS(fonts = {}, foundationVars = {}) {
+function generateFontCSS(fontRoles = {}, fonts = {}) {
   const cssLines = []
   const linkTags = []
 
-  const usedFamilies = extractUsedFamilies(fonts, foundationVars)
+  const usedFamilies = extractUsedFamilies(fontRoles)
 
   // --- @font-face rules from faces[] (filtered to used families) ---
   // Also generate <link rel="preload"> hints so browsers fetch fonts early
@@ -426,11 +385,11 @@ function generateFontCSS(fonts = {}, foundationVars = {}) {
     }
   }
 
-  // --- :root font variables (built-in roles) ---
+  // --- :root font variables (one --font-<name> per role, emitted once) ---
   const fontVars = []
-  for (const role of Object.keys(FONT_ROLE_SELECTORS)) {
-    if (fonts[role]) {
-      fontVars.push(`  --font-${role}: ${fonts[role]};`)
+  for (const [name, role] of Object.entries(fontRoles)) {
+    if (role.value) {
+      fontVars.push(`  --font-${name}: ${role.value};`)
     }
   }
 
@@ -441,30 +400,18 @@ function generateFontCSS(fonts = {}, foundationVars = {}) {
   }
 
   // --- Apply font families to elements ---
-  // Defining --font-* on :root is not enough — something must actually set
-  // `font-family` on rendered elements, the same way colors get an application
-  // rule ([id^="section-"] { background-color: var(--section) }). Without this
-  // the font vars are orphaned and text never picks them up, even though the
-  // vars are set and the @import/@font-face load. Two sources emit rules:
-  //   1. Built-in roles — only the slots the SITE explicitly set
-  //      (fonts._userSlots), so a foundation's own default typography is left
-  //      untouched when theme.yml doesn't override that slot.
-  //   2. Foundation font vars that declare `applyTo` selectors — the foundation
-  //      opted these typefaces into framework application (always on; the site
-  //      retunes the family, not the wiring).
-  const userSlots = new Set(fonts._userSlots || [])
+  // Defining --font-* on :root is not enough — something must set `font-family`
+  // on rendered elements, the same way colors get an application rule
+  // ([id^="section-"] { background-color: var(--section) }). The processor has
+  // already resolved which roles apply (`role.apply`): a built-in role applies
+  // only when the site set it (don't stomp a foundation's own typography with
+  // system-ui); a foundation-owned/redefined role applies always via its
+  // `applyTo` selectors.
   const applyRules = []
-  for (const [role, selector] of Object.entries(FONT_ROLE_SELECTORS)) {
-    if (userSlots.has(role)) {
-      applyRules.push(`${selector} { font-family: var(--font-${role}); }`)
-    }
-  }
-  for (const [name, config] of Object.entries(foundationVars)) {
-    if (!isFontVar(name, config) || typeof config !== 'object' || !config.applyTo) continue
-    const selector = (Array.isArray(config.applyTo) ? config.applyTo.join(', ') : String(config.applyTo)).trim()
-    if (selector) {
-      applyRules.push(`${selector} { font-family: var(--${name}); }`)
-    }
+  for (const [name, role] of Object.entries(fontRoles)) {
+    if (!role.apply || !role.applyTo?.length) continue
+    const selector = role.applyTo.join(', ')
+    applyRules.push(`${selector} { font-family: var(--font-${name}); }`)
   }
   if (applyRules.length > 0) {
     cssLines.push('')
@@ -542,6 +489,7 @@ export function generateThemeCSS(config = {}) {
     colors = DEFAULT_COLORS,
     contexts = {},
     fonts = {},
+    fontRoles = {},
     appearance = {},
     foundationVars = {},
     colorVars = {},
@@ -549,10 +497,11 @@ export function generateThemeCSS(config = {}) {
 
   const sections = []
 
-  // 1. Font face rules and variables (links returned separately)
-  //    foundationVars is passed so families referenced by a foundation `font-*`
-  //    var (e.g. an editorial `font-serif`) survive the used-family filter.
-  const fontResult = generateFontCSS(fonts, foundationVars)
+  // 1. Font face rules and variables (links returned separately). Font roles are
+  //    resolved by the processor; `fonts` carries only import[] / faces[] here.
+  //    Font-typed vars are already split out of `foundationVars`, so the generic
+  //    foundation-var emission below never double-writes a --font-<name>.
+  const fontResult = generateFontCSS(fontRoles, fonts)
   if (fontResult.css) {
     sections.push('/* Typography */\n' + fontResult.css)
   }

@@ -557,33 +557,52 @@ describe('Theme Build Pipeline', () => {
     })
 
     it('does not treat non-family font vars (weight/size) as typefaces', () => {
-      const used = extractUsedFamilies(
-        { _userSlots: ['body'], body: 'Inter, sans-serif' },
-        { 'font-weight': { default: '700' }, 'font-size': { default: '18px' } }
+      const result = buildTheme(
+        { fonts: { faces: [{ family: 'Fraunces', src: '/fonts/fraunces.woff2', weight: 400 }] } },
+        {
+          foundationVars: {
+            'font-weight': { default: '700' },
+            'font-size': { default: '18px' },
+            'font-serif': { type: 'font', default: 'Fraunces, serif' },
+          },
+        }
       )
-      expect(used.has('inter')).toBe(true)
-      expect(used.has('700')).toBe(false)
-      expect(used.has('18px')).toBe(false)
+      // The serif typeface loads; weight/size stay ordinary vars, not families.
+      expect(result.css).toContain('font-family: Fraunces')
+      expect(result.css).toContain('--font-weight: 700')
+      expect(result.css).toContain('--font-size: 18px')
+      expect(result.css).not.toContain('font-family: 700')
     })
 
-    it('extractUsedFamilies reads families from font-* vars in both shapes', () => {
-      const used = extractUsedFamilies(
-        { _userSlots: [] },
-        { 'font-serif': { default: 'Fraunces, serif' }, 'font-display': 'Anton, sans-serif' }
+    it('loads families from foundation font vars in both shapes', () => {
+      const result = buildTheme(
+        {
+          fonts: {
+            faces: [
+              { family: 'Fraunces', src: '/fonts/fraunces.woff2', weight: 400 },
+              { family: 'Anton', src: '/fonts/anton.woff2', weight: 400 },
+            ],
+          },
+        },
+        {
+          foundationVars: {
+            'font-serif': { type: 'font', default: 'Fraunces, serif' },
+            'font-display': 'Anton, sans-serif',
+          },
+        }
       )
-      expect(used.has('fraunces')).toBe(true)
-      expect(used.has('anton')).toBe(true)
-      // Generic keywords are still dropped.
-      expect(used.has('serif')).toBe(false)
-      expect(used.has('sans-serif')).toBe(false)
+      expect(result.css).toContain('font-family: Fraunces')
+      expect(result.css).toContain('font-family: Anton')
     })
 
     it('classifies a typeface by type:font even without a font- prefix', () => {
-      const used = extractUsedFamilies(
-        { _userSlots: [] },
-        { display: { type: 'font', default: 'Anton, sans-serif' } }
+      const result = buildTheme(
+        { fonts: { faces: [{ family: 'Anton', src: '/fonts/anton.woff2', weight: 400 }] } },
+        { foundationVars: { display: { type: 'font', default: 'Anton, sans-serif' } } }
       )
-      expect(used.has('anton')).toBe(true)
+      // Loads the family and emits it under the normalized --font-display.
+      expect(result.css).toContain('font-family: Anton')
+      expect(result.css).toContain('--font-display: Anton, sans-serif')
     })
 
     it('emits an application rule for a font var that declares applyTo', () => {
@@ -621,6 +640,63 @@ describe('Theme Build Pipeline', () => {
       expect(result.css).toContain('blockquote { font-family: var(--font-serif); }')
       // Site override wins on the value; the wiring (applyTo) is unchanged.
       expect(result.css).toContain('--font-serif: Playfair Display, serif')
+    })
+  })
+
+  describe('Font role redefinition + unified surface (increment 2)', () => {
+    it('lets a foundation redefine a built-in role applyTo (heading → +h4)', () => {
+      const result = buildTheme(
+        {},
+        { foundationVars: { heading: { type: 'font', applyTo: ['h1', 'h2', 'h3', 'h4'] } } }
+      )
+      // A foundation-owned role applies always, with its own selectors.
+      expect(result.css).toContain('h1, h2, h3, h4 { font-family: var(--font-heading); }')
+    })
+
+    it('emits --font-heading once; site value wins over a foundation redefinition', () => {
+      const result = buildTheme(
+        { fonts: { heading: 'Poppins, sans-serif' } },
+        {
+          foundationVars: {
+            heading: { type: 'font', default: 'Georgia, serif', applyTo: ['h1', 'h2', 'h3', 'h4'] },
+          },
+        }
+      )
+      const occurrences = (result.css.match(/--font-heading:/g) || []).length
+      expect(occurrences).toBe(1)
+      expect(result.css).toContain('--font-heading: Poppins, sans-serif')
+      expect(result.css).not.toContain('--font-heading: Georgia, serif')
+      // The foundation's applyTo (h1–h4) still governs application.
+      expect(result.css).toContain('h1, h2, h3, h4 { font-family: var(--font-heading); }')
+    })
+
+    it('sets a foundation-added role via the unified fonts: surface', () => {
+      const result = buildTheme(
+        {
+          fonts: {
+            serif: 'Fraunces, Georgia, serif',
+            faces: [{ family: 'Fraunces', src: '/fonts/fraunces.woff2', weight: 400 }],
+          },
+        },
+        {
+          foundationVars: {
+            'font-serif': { type: 'font', default: 'ui-serif, serif', applyTo: ['blockquote'] },
+          },
+        }
+      )
+      // Site value (fonts.serif) wins; foundation applyTo applies it; family loads.
+      expect(result.css).toContain('--font-serif: Fraunces, Georgia, serif')
+      expect(result.css).toContain('blockquote { font-family: var(--font-serif); }')
+      expect(result.css).toContain('font-family: Fraunces')
+    })
+
+    it('does not double-emit --font-serif via the generic foundation-var path', () => {
+      const result = buildTheme(
+        {},
+        { foundationVars: { 'font-serif': { type: 'font', default: 'Fraunces, serif' } } }
+      )
+      const occurrences = (result.css.match(/--font-serif:/g) || []).length
+      expect(occurrences).toBe(1)
     })
   })
 
@@ -700,10 +776,10 @@ describe('Theme Build Pipeline', () => {
   })
 
   describe('extractUsedFamilies', () => {
-    it('extracts family names from font slots', () => {
+    it('extracts family names from loaded roles', () => {
       const result = extractUsedFamilies({
-        body: 'Montserrat, system-ui, sans-serif',
-        heading: '"Playfair Display", Georgia, serif',
+        body: { value: 'Montserrat, system-ui, sans-serif', load: true },
+        heading: { value: '"Playfair Display", Georgia, serif', load: true },
       })
 
       expect(result.has('montserrat')).toBe(true)
@@ -715,14 +791,21 @@ describe('Theme Build Pipeline', () => {
       expect(result.has('georgia')).toBe(true)
     })
 
-    it('returns empty set when no slots defined', () => {
+    it('ignores roles not flagged to load (bare framework defaults)', () => {
+      const result = extractUsedFamilies({
+        body: { value: 'Montserrat, sans-serif', load: false },
+      })
+      expect(result.size).toBe(0)
+    })
+
+    it('returns empty set when no roles defined', () => {
       const result = extractUsedFamilies({})
       expect(result.size).toBe(0)
     })
 
     it('handles single-quoted family names', () => {
       const result = extractUsedFamilies({
-        body: "'Open Sans', sans-serif",
+        body: { value: "'Open Sans', sans-serif", load: true },
       })
 
       expect(result.has('open sans')).toBe(true)
