@@ -56,7 +56,7 @@ const DEFAULT_APPEARANCE = {
 const DEFAULT_FONTS = {
   body: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   heading: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  mono: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace',
+  code: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace',
 }
 
 /**
@@ -261,7 +261,10 @@ const CONTEXT_AWARE_TYPES = new Set(['color', 'gradient'])
 /**
  * Validate foundation variables configuration
  *
- * Accepts enriched var schema: { default, description, label, type, options, group, globalOnly }
+ * Accepts enriched var schema: { default, description, label, type, options, group, globalOnly, applyTo }
+ * A `type: 'font'` var is a themeable typeface (family loads, schema tags it as
+ * a font); its optional `applyTo` is a list of selectors the framework paints
+ * `font-family: var(--<name>)` onto, like a built-in role.
  *
  * @param {Object} vars - Foundation variables
  * @returns {{ valid: boolean, errors: string[] }}
@@ -478,15 +481,22 @@ export function processTheme(rawConfig = {}, options = {}) {
     contexts[name] = { ...defaultContexts[name], ...normalized }
   }
 
-  // Process fonts
+  // Process fonts. `mono` is the deprecated name for the `code` role — accept it
+  // as an alias so existing sites keep working, with a one-line nudge.
+  const rawFonts = { ...(rawConfig.fonts || {}) }
+  if (rawFonts.mono !== undefined && rawFonts.code === undefined) {
+    warnings.push('theme.yml `fonts.mono` is deprecated — rename it to `fonts.code` (the code/monospace role).')
+    rawFonts.code = rawFonts.mono
+  }
+  delete rawFonts.mono
   const fonts = {
     ...DEFAULT_FONTS,
-    ...(rawConfig.fonts || {}),
+    ...rawFonts,
   }
   // Track which font slots the user explicitly set (vs inherited defaults).
   // Used by extractUsedFamilies to avoid loading fonts referenced only in defaults.
-  const userFonts = rawConfig.fonts || {}
-  fonts._userSlots = ['body', 'heading', 'mono'].filter((s) => userFonts[s] !== undefined)
+  const userFonts = rawFonts
+  fonts._userSlots = ['body', 'heading', 'code'].filter((s) => userFonts[s] !== undefined)
 
   // Normalize and process appearance
   const appearance = normalizeAppearance(rawConfig.appearance)

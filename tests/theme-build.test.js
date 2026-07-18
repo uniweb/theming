@@ -82,18 +82,18 @@ describe('Theme Build Pipeline', () => {
         fonts: {
           body: 'Inter, sans-serif',
           heading: 'Poppins, sans-serif',
-          mono: 'Fira Code, monospace',
+          code: 'Fira Code, monospace',
         },
       })
 
       // Vars alone are orphaned — there must be an application rule per slot.
       expect(result.css).toContain('body { font-family: var(--font-body); }')
       expect(result.css).toContain('h1, h2, h3 { font-family: var(--font-heading); }')
-      expect(result.css).toContain('code, pre, kbd, samp { font-family: var(--font-mono); }')
+      expect(result.css).toContain('code, pre, kbd, samp { font-family: var(--font-code); }')
     })
 
     it('does not apply font rules for slots the site did not set', () => {
-      // Only heading is site-set; body/mono fall back to foundation defaults
+      // Only heading is site-set; body/code fall back to foundation defaults
       // and must NOT get a forced application rule.
       const result = buildTheme({
         fonts: {
@@ -103,7 +103,30 @@ describe('Theme Build Pipeline', () => {
 
       expect(result.css).toContain('h1, h2, h3 { font-family: var(--font-heading); }')
       expect(result.css).not.toContain('body { font-family: var(--font-body); }')
-      expect(result.css).not.toContain('code, pre, kbd, samp { font-family: var(--font-mono); }')
+      expect(result.css).not.toContain('code, pre, kbd, samp { font-family: var(--font-code); }')
+    })
+
+    it('emits --font-code (not --font-mono) for the code role', () => {
+      const result = buildTheme({ fonts: { code: 'Fira Code, monospace' } })
+      expect(result.css).toContain('--font-code: Fira Code, monospace')
+      // Clean cut: the framework never writes --font-mono anymore.
+      expect(result.css).not.toContain('--font-mono')
+    })
+
+    it('accepts the deprecated `mono` slot as an alias of `code`, with a warning', () => {
+      const result = buildTheme({ fonts: { mono: 'Fira Code, monospace' } })
+      expect(result.css).toContain('--font-code: Fira Code, monospace')
+      expect(result.css).toContain('code, pre, kbd, samp { font-family: var(--font-code); }')
+      expect(result.css).not.toContain('--font-mono')
+      expect(result.warnings.some((w) => /fonts\.mono` is deprecated/.test(w))).toBe(true)
+    })
+
+    it('prefers an explicit `code` slot over a legacy `mono` slot', () => {
+      const result = buildTheme({
+        fonts: { code: 'JetBrains Mono, monospace', mono: 'Fira Code, monospace' },
+      })
+      expect(result.css).toContain('--font-code: JetBrains Mono, monospace')
+      expect(result.css).not.toContain('Fira Code')
     })
 
     it('generates link tags for Google Fonts imports (not @import)', () => {
@@ -297,7 +320,7 @@ describe('Theme Build Pipeline', () => {
         fonts: {
           body: 'Inter, sans-serif',
           heading: 'Poppins, sans-serif',
-          mono: 'Fira Code, monospace',
+          code: 'Fira Code, monospace',
           import: [
             { url: 'https://fonts.googleapis.com/css2?family=Inter' },
             { url: 'https://fonts.googleapis.com/css2?family=Poppins' },
@@ -553,6 +576,51 @@ describe('Theme Build Pipeline', () => {
       // Generic keywords are still dropped.
       expect(used.has('serif')).toBe(false)
       expect(used.has('sans-serif')).toBe(false)
+    })
+
+    it('classifies a typeface by type:font even without a font- prefix', () => {
+      const used = extractUsedFamilies(
+        { _userSlots: [] },
+        { display: { type: 'font', default: 'Anton, sans-serif' } }
+      )
+      expect(used.has('anton')).toBe(true)
+    })
+
+    it('emits an application rule for a font var that declares applyTo', () => {
+      const result = buildTheme(
+        {},
+        {
+          foundationVars: {
+            'font-serif': { type: 'font', default: 'Fraunces, serif', applyTo: ['blockquote', '.tagline'] },
+          },
+        }
+      )
+      expect(result.css).toContain('blockquote, .tagline { font-family: var(--font-serif); }')
+      // The var itself is still emitted for utility / manual var() use.
+      expect(result.css).toContain('--font-serif: Fraunces, serif')
+    })
+
+    it('does not emit an application rule for a font var without applyTo', () => {
+      const result = buildTheme(
+        {},
+        { foundationVars: { 'font-serif': { type: 'font', default: 'Fraunces, serif' } } }
+      )
+      expect(result.css).not.toContain('font-family: var(--font-serif)')
+      expect(result.css).toContain('--font-serif: Fraunces, serif')
+    })
+
+    it('applies a site-overridden family to the foundation var applyTo selectors', () => {
+      const result = buildTheme(
+        { vars: { 'font-serif': 'Playfair Display, serif' } },
+        {
+          foundationVars: {
+            'font-serif': { type: 'font', default: 'Fraunces, serif', applyTo: ['blockquote'] },
+          },
+        }
+      )
+      expect(result.css).toContain('blockquote { font-family: var(--font-serif); }')
+      // Site override wins on the value; the wiring (applyTo) is unchanged.
+      expect(result.css).toContain('--font-serif: Playfair Display, serif')
     })
   })
 

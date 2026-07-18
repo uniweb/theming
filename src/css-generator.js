@@ -219,21 +219,45 @@ const NON_FAMILY_FONT_VARS = new Set([
   'font-size-adjust', 'font-smoothing', 'font-palette', 'font-language-override',
 ])
 
+// Built-in font roles → the elements the framework paints them onto.
+// `heading` is scoped to h1–h3: display/heading faces are drawn for large
+// sizes, and h4–h6 usually render near body size where a display face reads
+// awkwardly, so the minor headings stay in the body font. `code` (formerly
+// `mono`) is the code/monospace role — it owns `--font-code`, decoupled from
+// Tailwind's `font-mono` utility scale, which a foundation now controls via its
+// own `font-mono` var.
+const FONT_ROLE_SELECTORS = {
+  body: 'body',
+  heading: 'h1, h2, h3',
+  code: 'code, pre, kbd, samp',
+}
+
+// A foundation var is a themeable typeface when it declares `type: 'font'`.
+// Deprecated fallback: a `font-*`-prefixed name that isn't a known CSS longhand
+// — kept so foundations predating the `type: 'font'` convention still load
+// their families and honor `applyTo`.
+function isFontVar(name, config) {
+  const type = typeof config === 'object' ? config?.type : undefined
+  if (type === 'font') return true
+  return name.startsWith('font-') && !NON_FAMILY_FONT_VARS.has(name)
+}
+
 /**
  * Extract the font family names the site actually references.
  *
  * Two sources count as "used":
- *   1. The `body`/`heading`/`mono` slots the user explicitly configured
+ *   1. The `body`/`heading`/`code` slots the user explicitly configured
  *      (tracked via _userSlots from the processor). Default system stacks are
  *      ignored so they don't trigger unnecessary font loading.
- *   2. Foundation `font-*` vars (e.g. an editorial `font-serif`). A foundation
+ *   2. Foundation font vars — declared `type: 'font'` (or, as a deprecated
+ *      fallback, a `font-*` name), e.g. an editorial `font-serif`. A foundation
  *      can declare a themeable typeface beyond the three built-in roles; the
  *      site sets its value and loads it with `fonts.import` / `fonts.faces`.
  *      Without counting these, such a family is filtered out as "unused" and
  *      never loads — capping a foundation at the three role slots.
  *
  * @param {Object} fonts - Font configuration (may carry _userSlots)
- * @param {Object} [foundationVars] - Resolved foundation vars (name → { default } | value)
+ * @param {Object} [foundationVars] - Resolved foundation vars (name → { default, type, applyTo } | value)
  * @returns {Set<string>} Lowercase family names referenced by the site
  */
 function extractUsedFamilies(fonts, foundationVars = {}) {
@@ -250,13 +274,13 @@ function extractUsedFamilies(fonts, foundationVars = {}) {
     }
   }
 
-  const slots = fonts._userSlots || ['body', 'heading', 'mono']
+  const slots = fonts._userSlots || ['body', 'heading', 'code']
   for (const slot of slots) {
     addFamiliesFrom(fonts[slot])
   }
 
   for (const [name, config] of Object.entries(foundationVars)) {
-    if (!name.startsWith('font-') || NON_FAMILY_FONT_VARS.has(name)) continue
+    if (!isFontVar(name, config)) continue
     addFamiliesFrom(typeof config === 'object' ? config?.default : config)
   }
 
@@ -402,16 +426,12 @@ function generateFontCSS(fonts = {}, foundationVars = {}) {
     }
   }
 
-  // --- :root font variables ---
+  // --- :root font variables (built-in roles) ---
   const fontVars = []
-  if (fonts.body) {
-    fontVars.push(`  --font-body: ${fonts.body};`)
-  }
-  if (fonts.heading) {
-    fontVars.push(`  --font-heading: ${fonts.heading};`)
-  }
-  if (fonts.mono) {
-    fontVars.push(`  --font-mono: ${fonts.mono};`)
+  for (const role of Object.keys(FONT_ROLE_SELECTORS)) {
+    if (fonts[role]) {
+      fontVars.push(`  --font-${role}: ${fonts[role]};`)
+    }
   }
 
   if (fontVars.length > 0) {
@@ -425,22 +445,26 @@ function generateFontCSS(fonts = {}, foundationVars = {}) {
   // `font-family` on rendered elements, the same way colors get an application
   // rule ([id^="section-"] { background-color: var(--section) }). Without this
   // the font vars are orphaned and text never picks them up, even though the
-  // vars are set and the @import/@font-face load. Only apply slots the SITE
-  // explicitly set (fonts._userSlots) so a foundation's own default typography
-  // is left untouched when theme.yml doesn't override that slot.
+  // vars are set and the @import/@font-face load. Two sources emit rules:
+  //   1. Built-in roles — only the slots the SITE explicitly set
+  //      (fonts._userSlots), so a foundation's own default typography is left
+  //      untouched when theme.yml doesn't override that slot.
+  //   2. Foundation font vars that declare `applyTo` selectors — the foundation
+  //      opted these typefaces into framework application (always on; the site
+  //      retunes the family, not the wiring).
   const userSlots = new Set(fonts._userSlots || [])
   const applyRules = []
-  if (userSlots.has('body')) {
-    applyRules.push('body { font-family: var(--font-body); }')
+  for (const [role, selector] of Object.entries(FONT_ROLE_SELECTORS)) {
+    if (userSlots.has(role)) {
+      applyRules.push(`${selector} { font-family: var(--font-${role}); }`)
+    }
   }
-  if (userSlots.has('heading')) {
-    // Only the prominent headings — display/heading faces are drawn for large
-    // sizes; h4–h6 usually render at or near body size where a display face
-    // reads awkwardly, so they stay in the body font.
-    applyRules.push('h1, h2, h3 { font-family: var(--font-heading); }')
-  }
-  if (userSlots.has('mono')) {
-    applyRules.push('code, pre, kbd, samp { font-family: var(--font-mono); }')
+  for (const [name, config] of Object.entries(foundationVars)) {
+    if (!isFontVar(name, config) || typeof config !== 'object' || !config.applyTo) continue
+    const selector = (Array.isArray(config.applyTo) ? config.applyTo.join(', ') : String(config.applyTo)).trim()
+    if (selector) {
+      applyRules.push(`${selector} { font-family: var(--${name}); }`)
+    }
   }
   if (applyRules.length > 0) {
     cssLines.push('')
