@@ -83,10 +83,11 @@ const NON_FAMILY_FONT_VARS = new Set([
 
 /**
  * A foundation var is a themeable typeface (font role) when it declares
- * `type: 'font'`. Deprecated fallback: a `font-*`-prefixed name that isn't a
- * known CSS longhand — kept so foundations predating the convention still work.
+ * `type: 'font'`, or — the inferred case — its name is `font-*` and not a known
+ * CSS longhand. Exported so the build can persist the inferred `type: 'font'`
+ * into schema.json (the runtime relies on the same predicate).
  */
-function isFontVar(name, config) {
+export function isFontVar(name, config) {
   const type = typeof config === 'object' ? config?.type : undefined
   if (type === 'font') return true
   return name.startsWith('font-') && !NON_FAMILY_FONT_VARS.has(name)

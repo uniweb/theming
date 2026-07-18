@@ -34,6 +34,7 @@ export {
   processTheme,
   extractFoundationVars,
   foundationHasVars,
+  isFontVar,
 } from './processor.js'
 
 // Value normalization
