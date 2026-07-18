@@ -527,16 +527,12 @@ export function processTheme(rawConfig = {}, options = {}) {
     contexts[name] = { ...defaultContexts[name], ...normalized }
   }
 
-  // Fonts: `mono` is the deprecated name for the `code` role — accept it as an
-  // alias so existing sites keep working, with a one-line nudge. The full
-  // resolution into the font-role namespace happens after foundation vars are
-  // merged (below), so a foundation's font vars can redefine/extend the roles.
+  // Fonts resolve into the font-role namespace after foundation vars are merged
+  // (below), so a foundation's font vars can redefine/extend the roles. `mono`
+  // is not a built-in role — the code/monospace role is `code`. It flows through
+  // as an ordinary name (a foundation may define a `mono` typeface); a
+  // post-resolution check nudges a site that set `fonts.mono` expecting code.
   const rawFonts = { ...(rawConfig.fonts || {}) }
-  if (rawFonts.mono !== undefined && rawFonts.code === undefined) {
-    warnings.push('theme.yml `fonts.mono` is deprecated — rename it to `fonts.code` (the code/monospace role).')
-    rawFonts.code = rawFonts.mono
-  }
-  delete rawFonts.mono
 
   // Normalize and process appearance
   const appearance = normalizeAppearance(rawConfig.appearance)
@@ -612,6 +608,12 @@ export function processTheme(rawConfig = {}, options = {}) {
     const intended = role.foundationOwned || role.userSet
     role.apply = intended && Array.isArray(role.applyTo) && role.applyTo.length > 0
     role.load = intended
+  }
+
+  // `mono` is no longer aliased to `code`. Nudge a site that set `fonts.mono`
+  // expecting the code font, unless the foundation actually defines a `mono` role.
+  if (rawFonts.mono !== undefined && !fontRoles.mono?.foundationOwned) {
+    warnings.push('theme.yml `fonts.mono` is not a built-in font role — the code/monospace role is `code`. Rename `fonts.mono` → `fonts.code`.')
   }
 
   // config.fonts: name→value (for the Theme API) plus import/faces (loading).

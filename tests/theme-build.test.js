@@ -113,20 +113,21 @@ describe('Theme Build Pipeline', () => {
       expect(result.css).not.toContain('--font-mono')
     })
 
-    it('accepts the deprecated `mono` slot as an alias of `code`, with a warning', () => {
+    it('does not alias `fonts.mono` to code — it sets a plain `mono` role and warns', () => {
       const result = buildTheme({ fonts: { mono: 'Fira Code, monospace' } })
-      expect(result.css).toContain('--font-code: Fira Code, monospace')
-      expect(result.css).toContain('code, pre, kbd, samp { font-family: var(--font-code); }')
-      expect(result.css).not.toContain('--font-mono')
-      expect(result.warnings.some((w) => /fonts\.mono` is deprecated/.test(w))).toBe(true)
+      // `mono` is an ordinary role now: it emits --font-mono, not the code role,
+      // and is not painted onto code elements.
+      expect(result.css).toContain('--font-mono: Fira Code, monospace')
+      expect(result.css).not.toContain('code, pre, kbd, samp { font-family: var(--font-code); }')
+      expect(result.warnings.some((w) => /`fonts\.mono` is not a built-in font role/.test(w))).toBe(true)
     })
 
-    it('prefers an explicit `code` slot over a legacy `mono` slot', () => {
+    it('treats `code` and `mono` as independent roles (no aliasing)', () => {
       const result = buildTheme({
         fonts: { code: 'JetBrains Mono, monospace', mono: 'Fira Code, monospace' },
       })
       expect(result.css).toContain('--font-code: JetBrains Mono, monospace')
-      expect(result.css).not.toContain('Fira Code')
+      expect(result.css).toContain('--font-mono: Fira Code, monospace')
     })
 
     it('generates link tags for Google Fonts imports (not @import)', () => {
