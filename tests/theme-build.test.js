@@ -565,6 +565,54 @@ describe('Theme Build Pipeline', () => {
     })
   })
 
+  // `links` is the ONLY place the actual font-loading tags are emitted — the
+  // theme CSS carries no @import for them. A consumer that injects the CSS but
+  // drops `links` preconnects to the font host and then never requests the
+  // stylesheet, leaving every imported family undefined.
+  describe('Font links carry every tag needed to load the fonts', () => {
+    it('emits a stylesheet link, not an @import, for Google Fonts', () => {
+      const result = buildTheme({
+        fonts: {
+          body: 'Inter, sans-serif',
+          import: [{ url: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;700' }],
+        },
+      })
+
+      expect(result.css).not.toContain('@import')
+      expect(result.links).toContain('rel="stylesheet"')
+      expect(result.links).toMatch(/href="https:\/\/fonts\.googleapis\.com\/css2\?family=Inter/)
+      expect(result.links).toContain('rel="preconnect" href="https://fonts.googleapis.com"')
+      expect(result.links).toContain('rel="preconnect" href="https://fonts.gstatic.com"')
+    })
+
+    it('preconnects to non-Google font hosts too', () => {
+      const result = buildTheme({
+        fonts: {
+          body: 'Söhne, sans-serif',
+          import: [{ url: 'https://use.typekit.net/abc1234.css' }],
+        },
+      })
+
+      expect(result.links).toContain('<link rel="preconnect" href="https://use.typekit.net">')
+      expect(result.links).toContain('<link rel="stylesheet" href="https://use.typekit.net/abc1234.css">')
+      // preconnect must precede the stylesheet it warms up
+      expect(result.links.indexOf('preconnect')).toBeLessThan(result.links.indexOf('stylesheet'))
+    })
+
+    it('emits a preload hint for each self-hosted face', () => {
+      const result = buildTheme({
+        fonts: {
+          body: 'Fraunces, serif',
+          faces: [{ family: 'Fraunces', src: '/fonts/fraunces.woff2', weight: 400, format: 'woff2' }],
+        },
+      })
+
+      expect(result.links).toContain('rel="preload"')
+      expect(result.links).toContain('as="font"')
+      expect(result.links).toContain('type="font/woff2"')
+    })
+  })
+
   describe('Foundation font vars (typefaces beyond the 3 roles)', () => {
     it('keeps a @font-face whose family is referenced only by a foundation font-* var', () => {
       const result = buildTheme(

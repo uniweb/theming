@@ -356,6 +356,7 @@ function generateFontCSS(fontRoles = {}, fonts = {}, base = '/') {
 
   // --- External imports → <link> tags (filtered to used families) ---
   const googleUrls = []
+  const otherOrigins = new Set()
 
   if (fonts.import && Array.isArray(fonts.import)) {
     for (const entry of fonts.import) {
@@ -366,8 +367,21 @@ function generateFontCSS(fontRoles = {}, fonts = {}, base = '/') {
         if (filtered) googleUrls.push(filtered)
       } else {
         linkTags.push(`<link rel="stylesheet" href="${entry.url}">`)
+        try {
+          otherOrigins.add(new URL(entry.url).origin)
+        } catch {
+          // relative or malformed — no origin to preconnect to
+        }
       }
     }
+  }
+
+  // Preconnect to non-Google font hosts so the DNS/TLS handshake overlaps the
+  // stylesheet request instead of following it. Google's own preconnects are
+  // emitted below, alongside the merged css2 link. Emitting every font <link>
+  // from one place keeps consumers from having to re-derive any of them.
+  for (const origin of otherOrigins) {
+    linkTags.unshift(`<link rel="preconnect" href="${origin}">`)
   }
 
   // Merge Google Fonts into a single <link> with preconnect
