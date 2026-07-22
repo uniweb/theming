@@ -53,11 +53,13 @@ import { generateThemeCSS } from './css-generator.js'
  * @param {Object} themeYml - Raw theme.yml content
  * @param {Object} options - Processing options
  * @param {Object} options.foundationVars - Foundation variables
+ * @param {string} [options.base='/'] - Site base path, prefixed onto root-relative
+ *   font `src` URLs so self-hosted fonts resolve under subdirectory deployments
  * @returns {{ css: string, links: string, config: Object, errors: string[], warnings: string[] }}
  */
 export function buildTheme(themeYml = {}, options = {}) {
   const { config, errors, warnings } = processTheme(themeYml, options)
-  const { css, links } = generateThemeCSS(config)
+  const { css, links } = generateThemeCSS(config, { base: options.base })
 
   return {
     css,

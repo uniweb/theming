@@ -506,6 +506,65 @@ describe('Theme Build Pipeline', () => {
     })
   })
 
+  // Regression: a subdirectory deployment (GitHub Pages project site, /docs/,
+  // ...) moves the served root, but the @font-face rules ship in an inline
+  // <style>, so a root-relative src silently 404s and the site falls back to
+  // system fonts. The base has to be baked into the emitted URL.
+  describe('Font Faces under a base path', () => {
+    const theme = {
+      fonts: {
+        body: 'Fraunces, serif',
+        faces: [{ family: 'Fraunces', src: '/fonts/fraunces.woff2', weight: 400, format: 'woff2' }],
+      },
+    }
+
+    it('prefixes root-relative face srcs with the base', () => {
+      const result = buildTheme(theme, { base: '/my-repo/' })
+
+      expect(result.css).toContain("src: url('/my-repo/fonts/fraunces.woff2')")
+      expect(result.css).not.toContain("url('/fonts/fraunces.woff2')")
+      expect(result.links).toContain('/my-repo/fonts/fraunces.woff2')
+    })
+
+    it('leaves srcs untouched at the root base', () => {
+      for (const base of ['/', undefined]) {
+        const result = buildTheme(theme, { base })
+        expect(result.css).toContain("src: url('/fonts/fraunces.woff2')")
+      }
+    })
+
+    it('does not double-prefix an already-based src', () => {
+      const result = buildTheme(
+        { fonts: { body: 'Fraunces, serif', faces: [{ family: 'Fraunces', src: '/my-repo/fonts/fraunces.woff2' }] } },
+        { base: '/my-repo/' }
+      )
+
+      expect(result.css).toContain("src: url('/my-repo/fonts/fraunces.woff2')")
+      expect(result.css).not.toContain('/my-repo/my-repo/')
+    })
+
+    it('leaves absolute and protocol-relative srcs alone', () => {
+      const result = buildTheme(
+        {
+          fonts: {
+            body: 'Fraunces, serif',
+            heading: 'Anton, sans-serif',
+            faces: [
+              { family: 'Fraunces', src: 'https://cdn.example.com/fraunces.woff2' },
+              { family: 'Anton', src: '//cdn.example.com/anton.woff2' },
+            ],
+          },
+        },
+        { base: '/my-repo/' }
+      )
+
+      expect(result.css).toContain("url('https://cdn.example.com/fraunces.woff2')")
+      expect(result.css).toContain("url('//cdn.example.com/anton.woff2')")
+      expect(result.css).not.toContain('/my-repo/https')
+      expect(result.css).not.toContain('/my-repo//cdn')
+    })
+  })
+
   describe('Foundation font vars (typefaces beyond the 3 roles)', () => {
     it('keeps a @font-face whose family is referenced only by a foundation font-* var', () => {
       const result = buildTheme(

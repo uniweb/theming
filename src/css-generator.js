@@ -278,6 +278,27 @@ function filterGoogleFontsUrl(url, usedFamilies) {
 }
 
 /**
+ * Prefix a root-relative asset URL with the site's base path.
+ *
+ * Self-hosted font `src` values are authored root-relative (`/fonts/x.woff2`)
+ * because that is what they are relative to the site. Under a subdirectory
+ * deployment (GitHub Pages project sites, `/docs/`, ...) the served root moves,
+ * so the emitted URL has to carry the base. A relative URL is not an option:
+ * the rules live in an inline `<style>`, so they would resolve against the
+ * *document* URL, which differs per route.
+ *
+ * Left untouched: absolute URLs (http:, //, data:), already-based URLs, and
+ * document-relative ones (`./`, `../`) whose author clearly meant them.
+ */
+function withBase(url, base) {
+  if (!url || !base || base === '/') return url
+  if (!url.startsWith('/') || url.startsWith('//')) return url
+  const prefix = base.endsWith('/') ? base.slice(0, -1) : base
+  if (url === prefix || url.startsWith(prefix + '/')) return url // already based
+  return prefix + url
+}
+
+/**
  * Check whether a URL points to Google Fonts.
  */
 function isGoogleFontsUrl(url) {
@@ -293,9 +314,10 @@ function isGoogleFontsUrl(url) {
  *
  * @param {Object} fontRoles - Resolved font roles (name → { value, applyTo, apply, load })
  * @param {Object} fonts - Font loading config (import[] / faces[])
+ * @param {string} [base='/'] - Site base path, prefixed onto root-relative face srcs
  * @returns {{ css: string, links: string }} css for <style>, links for <head>
  */
-function generateFontCSS(fontRoles = {}, fonts = {}) {
+function generateFontCSS(fontRoles = {}, fonts = {}, base = '/') {
   const cssLines = []
   const linkTags = []
 
@@ -311,10 +333,11 @@ function generateFontCSS(fontRoles = {}, fonts = {}) {
       if (!usedFamilies.has(face.family.toLowerCase())) continue
 
       const format = face.format || (face.src.endsWith('.woff2') ? 'woff2' : 'woff')
+      const src = withBase(face.src, base)
       cssLines.push(
         `@font-face {`,
         `  font-family: ${face.family};`,
-        `  src: url('${face.src}') format('${format}');`,
+        `  src: url('${src}') format('${format}');`,
         `  font-weight: ${face.weight || 400};`,
         `  font-style: ${face.style || 'normal'};`,
         `  font-display: swap;`,
@@ -323,7 +346,7 @@ function generateFontCSS(fontRoles = {}, fonts = {}) {
 
       const mimeType = PRELOAD_TYPE[format]
       if (mimeType) {
-        linkTags.push(`<link rel="preload" href="${face.src}" as="font" type="${mimeType}" crossorigin>`)
+        linkTags.push(`<link rel="preload" href="${src}" as="font" type="${mimeType}" crossorigin>`)
       }
     }
     if (cssLines.length > 0) {
@@ -482,9 +505,12 @@ export function generateFoundationVars(vars = {}) {
  * @param {Object} config.fonts - Font configuration
  * @param {Object} config.appearance - Appearance settings (dark mode, etc.)
  * @param {Object} config.foundationVars - Foundation-specific variables
+ * @param {Object} [options] - Generation options
+ * @param {string} [options.base='/'] - Site base path for subdirectory deployments
  * @returns {{ css: string, links: string }} CSS string and font link tags
  */
-export function generateThemeCSS(config = {}) {
+export function generateThemeCSS(config = {}, options = {}) {
+  const { base = '/' } = options
   const {
     colors = DEFAULT_COLORS,
     contexts = {},
@@ -501,7 +527,7 @@ export function generateThemeCSS(config = {}) {
   //    resolved by the processor; `fonts` carries only import[] / faces[] here.
   //    Font-typed vars are already split out of `foundationVars`, so the generic
   //    foundation-var emission below never double-writes a --font-<name>.
-  const fontResult = generateFontCSS(fontRoles, fonts)
+  const fontResult = generateFontCSS(fontRoles, fonts, base)
   if (fontResult.css) {
     sections.push('/* Typography */\n' + fontResult.css)
   }
