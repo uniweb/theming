@@ -573,6 +573,14 @@ export function generateThemeCSS(config = {}, options = {}) {
   }
 
   // 6. Dark scheme support (if enabled, default is dark, or follows system preference)
+  //
+  // This guard decides whether the `.scheme-dark` rules physically exist. It is
+  // the CANONICAL "site reaches dark" predicate; the model-side copy that the
+  // runtime boot resolver and kit's useAppearance consume is hasDarkScheme() in
+  // @uniweb/core (theme.js). These MUST agree — a scheme applied with no
+  // matching CSS renders as a light page claiming to be dark. @uniweb/theming
+  // has no @uniweb/core dependency (it also runs server-side in the platform),
+  // so the predicate is duplicated here by necessity; keep the two in lockstep.
   if (appearance.allowToggle || appearance.default === 'dark' || appearance.default === 'system' || appearance.schemes?.includes('dark')) {
     sections.push(generateDarkSchemeCSS(appearance, contexts.dark, colorVars))
   }
