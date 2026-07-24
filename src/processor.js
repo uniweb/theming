@@ -379,6 +379,49 @@ export function validateThemeConfig(config) {
 }
 
 /**
+ * Merge inline text styles over the framework defaults, property by property.
+ *
+ * Everything else in theme.yml merges at the granularity of the leaf value —
+ * `contexts[name]` merges your tokens into the default context object, `colors`
+ * and `appearance` merge per key. This does the same one level down, so a site
+ * declares only the deltas:
+ *
+ *   inline:
+ *     accent:
+ *       font-weight: inherit    # keeps the default colour
+ *
+ * A shallow merge replaced the whole style object instead, so the example above
+ * silently produced `span[accent] { font-weight: inherit }` with no colour at
+ * all, and accented text rendered in the surrounding heading colour. The failure
+ * was subtractive and invisible in the config — you had to know what the default
+ * contained to notice it was gone. Three of the shipped templates carried a
+ * verbatim restatement of the default `accent` style purely to work around this.
+ *
+ * To *drop* a default property rather than change it, give it a neutral CSS
+ * value — `font-weight: inherit` to follow the surrounding text, or `initial` /
+ * `unset` / `revert`. Setting a whole style to null still removes it entirely
+ * (the CSS generator skips non-object entries).
+ *
+ * @param {Object} defaults - DEFAULT_INLINE
+ * @param {Object} [overrides] - rawConfig.inline
+ * @returns {Object} merged style map
+ */
+function mergeInlineStyles(defaults, overrides) {
+  const merged = { ...defaults }
+
+  for (const [name, style] of Object.entries(overrides || {})) {
+    // Non-objects (null/false) pass through so a site can delete a default
+    // style outright; anything else layers over the default of the same name.
+    merged[name] =
+      style && typeof style === 'object' && !Array.isArray(style)
+        ? { ...(defaults[name] || {}), ...style }
+        : style
+  }
+
+  return merged
+}
+
+/**
  * Normalize appearance configuration
  *
  * @param {string|Object} appearance - Raw appearance config
@@ -659,8 +702,7 @@ export function processTheme(rawConfig = {}, options = {}) {
   const background = rawConfig.background || null
 
   // Inline text styles (semantic names → CSS declarations)
-  // Merge framework defaults with user overrides (user values win)
-  const inline = { ...DEFAULT_INLINE, ...(rawConfig.inline || {}) }
+  const inline = mergeInlineStyles(DEFAULT_INLINE, rawConfig.inline)
 
   const config = {
     colors,      // Raw colors for CSS generator

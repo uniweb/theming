@@ -311,6 +311,55 @@ describe('theme-processor', () => {
       expect(config.inline.accent['font-style']).toBe('italic')
     })
 
+    describe('inline styles merge property by property', () => {
+      it('keeps default properties the override does not mention', () => {
+        // The regression this prevents: declaring only `font-weight` used to
+        // replace the whole style object, dropping the colour, so accented text
+        // silently rendered in the surrounding heading colour.
+        const { config } = processTheme({
+          inline: { accent: { 'font-weight': 'inherit' } },
+        })
+
+        expect(config.inline.accent['font-weight']).toBe('inherit')
+        expect(config.inline.accent.color).toBe('var(--accent)')
+      })
+
+      it('lets a neutral value opt out of a default property', () => {
+        // How a full redefinition drops a default it doesn't want.
+        const { config } = processTheme({
+          inline: { accent: { color: 'var(--code)', 'font-weight': 'initial' } },
+        })
+
+        expect(config.inline.accent.color).toBe('var(--code)')
+        expect(config.inline.accent['font-weight']).toBe('initial')
+      })
+
+      it('still merges at the style-name level', () => {
+        const { config } = processTheme({
+          inline: { highlight: { 'background-color': 'yellow' } },
+        })
+
+        expect(config.inline.highlight['background-color']).toBe('yellow')
+        expect(config.inline.accent.color).toBe('var(--accent)')
+        expect(config.inline.muted.color).toBe('var(--subtle)')
+      })
+
+      it('removes a default style set to null', () => {
+        const { config } = processTheme({ inline: { accent: null } })
+
+        // The CSS generator skips non-object entries, so this deletes the rule.
+        expect(config.inline.accent).toBeNull()
+      })
+
+      it('does not mutate the shared defaults across calls', () => {
+        processTheme({ inline: { accent: { color: 'red', 'letter-spacing': '2px' } } })
+        const { config } = processTheme({})
+
+        expect(config.inline.accent.color).toBe('var(--accent)')
+        expect(config.inline.accent['letter-spacing']).toBeUndefined()
+      })
+    })
+
     describe('accent falls back to the brand colour', () => {
       it('inherits primary when no accent is declared', () => {
         // An accent is an optional second voice. A site that never names one
