@@ -26,7 +26,12 @@ const DEFAULT_CONTEXT_TOKENS = {
     'ring': 'var(--primary-500)',
     'link': 'var(--primary-600)',
     'link-hover': 'var(--primary-700)',
-    'accent': 'var(--accent-600)',
+    // Shade 500 is the site's colour exactly as authored (the palette anchors
+    // the input there). `link` and `primary` sit at 600 because they carry the
+    // strict contrast burden — body-size links, and white text on a fill. An
+    // accent is decorative emphasis, usually at display size, so it keeps the
+    // brand colour unmuddied instead of paying for contrast it doesn't need.
+    'accent': 'var(--accent-500)',
     'primary': 'var(--primary-600)',
     'primary-foreground': 'white',
     'primary-hover': 'var(--primary-700)',
@@ -55,7 +60,7 @@ const DEFAULT_CONTEXT_TOKENS = {
     'ring': 'var(--primary-500)',
     'link': 'var(--primary-600)',
     'link-hover': 'var(--primary-700)',
-    'accent': 'var(--accent-600)',
+    'accent': 'var(--accent-500)', // exact brand — see the light context
     'primary': 'var(--primary-600)',
     'primary-foreground': 'white',
     'primary-hover': 'var(--primary-700)',
@@ -84,6 +89,11 @@ const DEFAULT_CONTEXT_TOKENS = {
     'ring': 'var(--primary-500)',
     'link': 'var(--primary-400)',
     'link-hover': 'var(--primary-300)',
+    // Stays lightened, unlike the light/medium contexts which use the exact
+    // brand at 500. Every text token here is lightened (body, subtle, link)
+    // because a mid-brand hue on a near-black surface often isn't legible —
+    // a navy or forest-green accent at 500 would effectively disappear. A site
+    // whose brand does read on dark can set `contexts.dark.accent` to it.
     'accent': 'var(--accent-400)',
     'primary': 'var(--primary-500)',
     'primary-foreground': 'white',
@@ -108,6 +118,8 @@ const DEFAULT_CONTEXT_TOKENS = {
 const DEFAULT_COLORS = {
   primary: '#3b82f6',   // Blue
   secondary: '#64748b', // Slate
+  // Last resort only. A site that names no accent inherits its primary (see
+  // processTheme) — this literal is reached solely when the primary is unusable.
   accent: '#8b5cf6',    // Purple
   neutral: '#78716c',   // Stone
 }

@@ -274,7 +274,10 @@ describe('theme-processor', () => {
       const { config } = processTheme({})
 
       expect(config.inline).toHaveProperty('accent')
-      expect(config.inline.accent.color).toBe('var(--link)')
+      // --accent, not --link. [text]{accent} is decorative emphasis, not a
+      // navigable link; routing it through --link meant darkening links for
+      // readability also drained the brand colour out of display headings.
+      expect(config.inline.accent.color).toBe('var(--accent)')
       expect(config.inline).toHaveProperty('muted')
       expect(config.inline.muted.color).toBe('var(--subtle)')
     })
@@ -291,7 +294,7 @@ describe('theme-processor', () => {
       // User style present
       expect(config.inline.highlight['background-color']).toBe('var(--accent-100)')
       // Defaults preserved
-      expect(config.inline.accent.color).toBe('var(--link)')
+      expect(config.inline.accent.color).toBe('var(--accent)')
     })
 
     it('allows user to override default inline styles', () => {
@@ -306,6 +309,46 @@ describe('theme-processor', () => {
 
       expect(config.inline.accent.color).toBe('var(--accent-600)')
       expect(config.inline.accent['font-style']).toBe('italic')
+    })
+
+    describe('accent falls back to the brand colour', () => {
+      it('inherits primary when no accent is declared', () => {
+        // An accent is an optional second voice. A site that never names one
+        // means its brand colour — not a stock hue nobody chose, which would
+        // otherwise surface wherever markdown says [text]{accent} or {callout}.
+        const { config } = processTheme({ colors: { primary: '#E35D25' } })
+        expect(config.colors.accent).toBe('#E35D25')
+      })
+
+      it('honors an explicitly declared accent', () => {
+        const { config } = processTheme({
+          colors: { primary: '#E35D25', accent: '#0891b2' },
+        })
+        expect(config.colors.accent).toBe('#0891b2')
+      })
+
+      it('inherits the default primary when neither is declared', () => {
+        const { config } = processTheme({})
+        expect(config.colors.accent).toBe(config.colors.primary)
+      })
+
+      it('keeps a usable accent when the primary is invalid', () => {
+        // Degrading to "no accent palette at all" would leave --accent
+        // undefined, so the stock literal survives as a last resort.
+        const { config } = processTheme({ colors: { primary: 'not-a-color' } })
+        expect(config.colors.accent).toBe('#8b5cf6')
+      })
+    })
+
+    it('resolves accent to the exact authored brand colour, not a darker shade', () => {
+      // Shade 500 is the input as authored. `link`/`primary` sit at 600 because
+      // they carry the strict contrast burden; a decorative accent does not.
+      const { config } = processTheme({ colors: { primary: '#E35D25' } })
+      expect(config.contexts.light.accent).toBe('var(--accent-500)')
+      expect(config.contexts.medium.accent).toBe('var(--accent-500)')
+      // Dark stays lightened — a mid-brand hue at 500 often can't be read on a
+      // near-black surface, so every text token there is lifted.
+      expect(config.contexts.dark.accent).toBe('var(--accent-400)')
     })
 
     it('throws in strict mode with errors', () => {

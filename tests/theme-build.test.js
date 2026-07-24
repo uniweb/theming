@@ -438,7 +438,7 @@ describe('Theme Build Pipeline', () => {
       const result = buildTheme({})
 
       expect(result.css).toContain('span[accent]')
-      expect(result.css).toContain('var(--link)')
+      expect(result.css).toContain('var(--accent)')
       expect(result.css).toContain('span[muted]')
       expect(result.css).toContain('var(--subtle)')
     })

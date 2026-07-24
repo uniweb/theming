@@ -26,10 +26,19 @@ const NEUTRAL_PRESETS = {
 /**
  * Default inline text styles (content-author markdown: [text]{accent})
  * These reference semantic tokens so they adapt to context automatically
+ *
+ * `accent` resolves to --accent, not --link. It used to be --link, which
+ * conflated two roles that have genuinely different constraints: --link means
+ * "navigable text" and must stay readable at body size (4.5:1), while an accent
+ * is decorative emphasis, usually at display size (3:1 suffices). Welding them
+ * together meant a site that responsibly darkened its link colour also drained
+ * the brand colour out of its headlines, where the darker value buys nothing.
+ * It also left the `accent` colour family nearly unreachable from markdown, and
+ * contradicted `callout` right below, which already used --accent.
  */
 const DEFAULT_INLINE = {
   accent: {
-    color: 'var(--link)',
+    color: 'var(--accent)',
     'font-weight': '600',
   },
   callout: {
@@ -484,6 +493,19 @@ export function processTheme(rawConfig = {}, options = {}) {
   // Resolve named neutral presets to hex values
   if (typeof rawColors.neutral === 'string' && NEUTRAL_PRESETS[rawColors.neutral]) {
     rawColors.neutral = NEUTRAL_PRESETS[rawColors.neutral]
+  }
+
+  // A site that declares no accent colour almost always means "my brand
+  // colour" — an accent is an optional second voice, not a required one. The
+  // alternative is a fixed hue nobody chose showing up wherever markdown says
+  // [text]{accent} or {callout}. Falling back to primary also makes the
+  // --accent token safe to use as a default elsewhere: it is always *a* brand
+  // colour rather than a stock purple. The literal in DEFAULT_COLORS survives
+  // only as a last resort for a site whose primary is unusable.
+  const brandColor = rawColors.primary ?? defaultColors.primary
+  const isUsableColor = (v) => (typeof v === 'object' && v !== null) || isValidColor(v)
+  if (rawColors.accent === undefined && isUsableColor(brandColor)) {
+    rawColors.accent = brandColor
   }
 
   // Filter to only valid colors (skip invalid ones in non-strict mode)
