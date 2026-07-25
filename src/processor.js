@@ -115,36 +115,6 @@ function normalizeApplyTo(applyTo) {
   return cleaned.length ? cleaned : null
 }
 
-/**
- * Default code block theme configuration
- * Uses Shiki CSS variable names for compatibility
- * These values are NOT converted to CSS here - the kit's Code component
- * injects them at runtime only when code blocks are used (tree-shaking)
- */
-const DEFAULT_CODE_THEME = {
-  // Background and foreground
-  background: '#1e1e2e',      // Dark editor background
-  foreground: '#cdd6f4',      // Default text color
-
-  // Syntax highlighting colors (Shiki token variables)
-  keyword: '#cba6f7',         // Purple - keywords (if, else, function)
-  string: '#a6e3a1',          // Green - strings
-  number: '#fab387',          // Orange - numbers
-  comment: '#6c7086',         // Gray - comments
-  function: '#89b4fa',        // Blue - function names
-  variable: '#f5e0dc',        // Light pink - variables
-  operator: '#89dceb',        // Cyan - operators
-  punctuation: '#9399b2',     // Gray - punctuation
-  type: '#f9e2af',            // Yellow - types
-  constant: '#f38ba8',        // Red - constants
-  property: '#94e2d5',        // Teal - properties
-  tag: '#89b4fa',             // Blue - HTML/JSX tags
-  attribute: '#f9e2af',       // Yellow - attributes
-
-  // UI elements
-  lineNumber: '#6c7086',      // Line number color
-  selection: '#45475a',       // Selection background
-}
 
 /**
  * Validate color configuration
@@ -693,10 +663,14 @@ export function processTheme(rawConfig = {}, options = {}) {
   // Process code block theme
   // These values are stored for runtime injection by kit's Code component
   // (not converted to CSS here - enables tree-shaking when code blocks aren't used)
-  const code = {
-    ...DEFAULT_CODE_THEME,
-    ...(rawConfig.code || {}),
-  }
+  // Passed through exactly as declared — no defaults filled in.
+  //
+  // A default palette here would defeat the point of the setting downstream: a
+  // site naming a bundled theme and overriding one colour would arrive carrying
+  // fifteen, and the theme it named would be overridden in full by values it
+  // never asked for. Whoever renders code owns the default; this only carries
+  // what the site said.
+  const code = rawConfig.code ?? null
 
   // Site background (pass through as CSS value)
   const background = rawConfig.background || null
