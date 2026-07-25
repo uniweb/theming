@@ -597,10 +597,21 @@ export function generateThemeCSS(config = {}, options = {}) {
     sections.push(generateDarkSchemeCSS(appearance, contexts.dark, colorVars))
   }
 
-  // 7. Site background (if specified in theme.yml)
-  if (config.background) {
-    sections.push(`/* Site Background */\nbody {\n  background: ${config.background};\n}`)
-  }
+  // 7. Site background — the page behind the sections.
+  //
+  // Sections paint themselves (rule 3), and on a page whose sections run the
+  // full width that covers the viewport. It does not cover a layout with
+  // columns: a sidebar shell paints its rails and its article and leaves the
+  // space between them unpainted, which falls through to the browser's white —
+  // in both schemes, so dark mode shows a white page around dark panels.
+  //
+  // Defaulting to var(--section) means the page matches the sections sitting on
+  // it and flips with the visitor's choice, because that token already does. A
+  // site wanting a different canvas — a wash behind cards, an image — sets
+  // `background:` in theme.yml and replaces this.
+  sections.push(
+    `/* Site Background */\nbody {\n  background: ${config.background || 'var(--section)'};\n}`
+  )
 
   // 8. Inline text styles (if specified in theme.yml)
   if (config.inline && typeof config.inline === 'object') {
