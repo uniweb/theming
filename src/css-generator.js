@@ -322,6 +322,25 @@ function isGoogleFontsUrl(url) {
 }
 
 /**
+ * Marker delimiting the font `<link>` block in a rendered `<head>`.
+ *
+ * More than one stage can write that block — a build's `transformIndexHtml`, a
+ * build's per-page post-processing, and the runtime's shared prerender seam —
+ * so each has to tell "already injected" from "never injected" rather than
+ * guess, and a page passing through several must still end up with exactly one
+ * copy. The theme `<style>` hangs that check on its `id="uniweb-theme"`;
+ * `<link>` tags have no natural id, hence a comment.
+ *
+ * It lives HERE, beside the code producing the block it marks, because its
+ * consumers sit in packages that cannot import one another: `@uniweb/build`
+ * (both its Vite plugin and its prerenderer) and `@uniweb/runtime`. Both
+ * already depend on `@uniweb/theming`, so this is the one home neither has to
+ * reach across a dependency boundary to read — and duplicating the literal is
+ * exactly how the two halves of a dedupe check drift apart.
+ */
+export const FONT_LINKS_MARKER = '<!--uniweb-fonts-->'
+
+/**
  * Generate font CSS and external link tags.
  *
  * @param {Object} fontRoles - Resolved font roles (name → { value, applyTo, apply, load })

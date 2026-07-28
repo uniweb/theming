@@ -26,6 +26,7 @@ export {
   getDefaultContextTokens,
   getDefaultColors,
   extractUsedFamilies,
+  FONT_LINKS_MARKER,
 } from './css-generator.js'
 
 // Theme processing
