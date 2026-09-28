@@ -145,8 +145,19 @@ function buildRule(selector, vars) {
  * Works with both Block instances and plain data objects — only reads:
  * - block.stableId || block.id — for CSS selector
  * - block.themeName — '' for Auto, 'light'/'medium'/'dark' for Pinned
- * - block.standardOptions — { colors, foundationStyles }
+ * - block.themeOverrides — the section's `theme:`, as @uniweb/core normalizes it:
+ *   `{ colors, contexts, vars, tokens }` — a palette, tokens per color context, the
+ *   foundation's variables, and tokens for the section in any context
  * - block.componentVars — merged meta.js defaults + frontmatter overrides
+ * - block.standardOptions — ⚠️ the older editor envelope, `{ colors, foundationStyles }`,
+ *   read by its own rules until an editor writes the section's `theme` instead
+ * - block.childBlocks — child sections get the same, at any depth: rendered as sections,
+ *   they carry the `#section-{id}` these rules select [2026-09-28]
+ *
+ * ⭐ Which context's values apply, for the section's `theme`: a pinned section uses its own
+ * context's; a section that follows the site (Auto) uses `light` under a light scheme and
+ * `dark` under `.scheme-dark` — two rules, so no knowledge of whether the site can go dark
+ * is needed. A context's own token beats one written beside `mode`, being more specific.
  *
  * @param {Array<Object>} blocks - Block data objects
  * @param {Object} appearance - Theme appearance config
@@ -158,59 +169,78 @@ export function buildSectionOverrides(blocks, appearance = {}) {
   if (!blocks || blocks.length === 0) return ''
 
   let css = ''
-
   for (const block of blocks) {
-    const hasStandardOverrides = hasOverrides(block.standardOptions)
-    const hasComponentVars = block.componentVars && Object.keys(block.componentVars).length > 0
+    css += buildBlockRules(block, appearance || {})
+    if (Array.isArray(block.childBlocks) && block.childBlocks.length > 0) {
+      css += buildSectionOverrides(block.childBlocks, appearance)
+    }
+  }
+  return css
+}
 
-    if (!hasStandardOverrides && !hasComponentVars) continue
+/**
+ * The rules for one section: declarations for any scheme, and for an Auto section under a
+ * light and under a dark scheme.
+ */
+function buildBlockRules(block, appearance) {
+  const selector = `#section-${block.stableId || block.id}`
+  const isAuto = !block.themeName
+  const always = []
+  const light = []
+  const dark = []
 
-    const { colors, foundationStyles } = block.standardOptions || {}
-    const sectionId = block.stableId || block.id
-    const selector = `#section-${sectionId}`
-
-    const isAuto = !block.themeName
+  // ⚠️ The older editor envelope — its rules unchanged, the `light` bucket without a toggle
+  // included, so an editor sending it renders as before.
+  const legacy = block.standardOptions
+  const compVars = buildFoundationVars(block.componentVars)
+  if (hasOverrides(legacy)) {
+    const { colors, foundationStyles } = legacy
     const hasToggle = appearance.allowToggle
-
-    // Base palette is context-independent (always under 'light' key)
     const paletteVars = buildPaletteVars(colors?.colors?.light)
-
-    // Split foundation styles: flat (context-independent) + context-keyed (color/gradient)
     const { flat: flatFoundation, contexts: ctxFoundation } = splitFoundationStyles(foundationStyles)
     const foundationVars = buildFoundationVars(flatFoundation)
-
-    // Component-level CSS vars are context-independent
-    const compVars = buildFoundationVars(block.componentVars)
-
     if (isAuto && hasToggle) {
-      // Dual rules: light-scoped elements + dark-scoped elements
-      const lightElementVars = buildElementVars(colors?.elements?.light)
-      const darkElementVars = buildElementVars(colors?.elements?.dark)
-
-      // Context-aware foundation vars (color/gradient types)
-      const lightFoundationCtx = buildFoundationVars(ctxFoundation.light)
-      const darkFoundationCtx = buildFoundationVars(ctxFoundation.dark)
-
-      // Context-independent rule: palette + flat foundation + component vars (apply in both schemes)
-      const sharedVars = [...paletteVars, ...foundationVars, ...compVars]
-      css += buildRule(selector, sharedVars)
-
-      // Light-only overrides (elements + context-aware foundation vars)
-      css += buildRule(`:root:not(.scheme-dark) ${selector}`, [...lightElementVars, ...lightFoundationCtx])
-
-      // Dark-only overrides (elements + context-aware foundation vars)
-      css += buildRule(`.scheme-dark ${selector}`, [...darkElementVars, ...darkFoundationCtx])
+      always.push(...paletteVars, ...foundationVars, ...compVars)
+      light.push(...buildElementVars(colors?.elements?.light), ...buildFoundationVars(ctxFoundation.light))
+      dark.push(...buildElementVars(colors?.elements?.dark), ...buildFoundationVars(ctxFoundation.dark))
     } else {
-      // Single context: when toggle is off, always use 'light' bucket
-      // (overrides are context-independent); when toggle is on, use pinned context
       const ctx = hasToggle ? (block.themeName || 'light') : 'light'
-      const elementVars = buildElementVars(colors?.elements?.[ctx])
-      const ctxFoundationVars = buildFoundationVars(ctxFoundation[ctx])
+      always.push(
+        ...paletteVars,
+        ...buildElementVars(colors?.elements?.[ctx]),
+        ...foundationVars,
+        ...compVars,
+        ...buildFoundationVars(ctxFoundation[ctx])
+      )
+    }
+  } else {
+    always.push(...compVars)
+  }
 
-      const allVars = [...paletteVars, ...elementVars, ...foundationVars, ...compVars, ...ctxFoundationVars]
-      css += buildRule(selector, allVars)
+  // The section's `theme:` — theme.yml's keys, scoped to the section.
+  const theme = block.themeOverrides
+  const themeDark = []
+  if (theme) {
+    const { flat, contexts: ctxVars } = splitFoundationStyles(theme.vars)
+    always.push(...buildPaletteVars(theme.colors), ...buildFoundationVars(flat), ...buildElementVars(theme.tokens))
+    if (isAuto) {
+      light.push(...buildElementVars(theme.contexts?.light), ...buildFoundationVars(ctxVars.light))
+      themeDark.push(...buildElementVars(theme.contexts?.dark), ...buildFoundationVars(ctxVars.dark))
+      dark.push(...themeDark)
+    } else {
+      always.push(...buildElementVars(theme.contexts?.[block.themeName]), ...buildFoundationVars(ctxVars[block.themeName]))
     }
   }
 
-  return css
+  return (
+    buildRule(selector, always) +
+    buildRule(`:root:not(.scheme-dark) ${selector}`, light) +
+    buildRule(`.scheme-dark ${selector}`, dark) +
+    // A site that follows the visitor's system goes dark through a media query before any
+    // class is set — as the theme's own dark tokens do (`generateDarkSchemeCSS`) — so the
+    // section's dark values follow it there too. Same specificity as the light rule, later.
+    (appearance.default === 'system' && themeDark.length > 0
+      ? `@media (prefers-color-scheme: dark) {\n${buildRule(`:root:not(.scheme-light) ${selector}`, themeDark)}}\n`
+      : '')
+  )
 }
