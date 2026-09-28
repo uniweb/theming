@@ -12,32 +12,7 @@ import { generatePalettes } from './shade-generator.js'
 import { normalizeTokenValue } from './normalize.js'
 
 /**
- * Check if a block has any section-level overrides worth emitting.
- *
- * @param {Object} standardOptions - Block's standardOptions
- * @returns {boolean}
- */
-function hasOverrides(standardOptions) {
-  if (!standardOptions) return false
-
-  const { colors, foundationStyles } = standardOptions
-
-  if (foundationStyles && Object.keys(foundationStyles).length > 0) return true
-  if (!colors) return false
-
-  const hasColors =
-    colors.colors?.light && Object.keys(colors.colors.light).length > 0
-  const hasElements =
-    colors.elements &&
-    Object.values(colors.elements).some(
-      (ctx) => ctx && Object.keys(ctx).length > 0
-    )
-  return hasColors || hasElements
-}
-
-/**
- * Build CSS variable declarations for base palette overrides.
- * Base palette is context-independent — always stored under the 'light' key.
+ * Build CSS variable declarations for base palette overrides — context-independent.
  *
  * @param {Object} baseColors - e.g. { primary: "#3b82f6", accent: "#f59e0b" }
  * @returns {string[]} CSS declaration lines
@@ -75,7 +50,7 @@ function buildElementVars(elements) {
 }
 
 /**
- * Build CSS variable declarations for foundation style overrides.
+ * Build CSS variable declarations for variable overrides — a section's `vars`, a component's.
  *
  * @param {Object} styles - e.g. { "border-radius": "0.5rem" }
  * @returns {string[]} CSS declaration lines
@@ -92,13 +67,12 @@ function buildFoundationVars(styles) {
 }
 
 /**
- * Split foundation styles into flat (context-independent) and
- * context-keyed (color/gradient) values.
+ * Split variables into flat (context-independent) and context-keyed (color/gradient) values.
  *
  * Flat values: { "radius-xl": "1.5rem" }
  * Context-keyed values: { "colorful-bg": { light: "linear-gradient(...)", dark: "..." } }
  *
- * @param {Object} styles - Foundation styles object
+ * @param {Object} styles - a section's `vars`
  * @returns {{ flat: Object, contexts: Object }} - flat styles + { light: {...}, dark: {...} }
  */
 function splitFoundationStyles(styles) {
@@ -149,10 +123,12 @@ function buildRule(selector, vars) {
  *   `{ colors, contexts, vars, tokens }` — a palette, tokens per color context, the
  *   foundation's variables, and tokens for the section in any context
  * - block.componentVars — merged meta.js defaults + frontmatter overrides
- * - block.standardOptions — ⚠️ the older editor envelope, `{ colors, foundationStyles }`,
- *   read by its own rules until an editor writes the section's `theme` instead
  * - block.childBlocks — child sections get the same, at any depth: rendered as sections,
  *   they carry the `#section-{id}` these rules select [2026-09-28]
+ *
+ * ⛔ An editor's older envelope, `block.standardOptions` — `{ colors, foundationStyles }` — is
+ * no longer read (2026-09-28): an editor writes the section's `theme`, and @uniweb/core no longer
+ * sets it.
  *
  * ⭐ Which context's values apply, for the section's `theme`: a pinned section uses its own
  * context's; a section that follows the site (Auto) uses `light` under a light scheme and
@@ -189,33 +165,8 @@ function buildBlockRules(block, appearance) {
   const light = []
   const dark = []
 
-  // ⚠️ The older editor envelope — its rules unchanged, the `light` bucket without a toggle
-  // included, so an editor sending it renders as before.
-  const legacy = block.standardOptions
-  const compVars = buildFoundationVars(block.componentVars)
-  if (hasOverrides(legacy)) {
-    const { colors, foundationStyles } = legacy
-    const hasToggle = appearance.allowToggle
-    const paletteVars = buildPaletteVars(colors?.colors?.light)
-    const { flat: flatFoundation, contexts: ctxFoundation } = splitFoundationStyles(foundationStyles)
-    const foundationVars = buildFoundationVars(flatFoundation)
-    if (isAuto && hasToggle) {
-      always.push(...paletteVars, ...foundationVars, ...compVars)
-      light.push(...buildElementVars(colors?.elements?.light), ...buildFoundationVars(ctxFoundation.light))
-      dark.push(...buildElementVars(colors?.elements?.dark), ...buildFoundationVars(ctxFoundation.dark))
-    } else {
-      const ctx = hasToggle ? (block.themeName || 'light') : 'light'
-      always.push(
-        ...paletteVars,
-        ...buildElementVars(colors?.elements?.[ctx]),
-        ...foundationVars,
-        ...compVars,
-        ...buildFoundationVars(ctxFoundation[ctx])
-      )
-    }
-  } else {
-    always.push(...compVars)
-  }
+  // The component's variables: `meta.js` defaults with the section's values over them.
+  always.push(...buildFoundationVars(block.componentVars))
 
   // The section's `theme:` — theme.yml's keys, scoped to the section.
   const theme = block.themeOverrides
