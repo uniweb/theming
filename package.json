@@ -1,6 +1,6 @@
 {
   "name": "@uniweb/theming",
-  "version": "0.2.0",
+  "version": "1.0.1",
   "description": "Theming utilities for the Uniweb platform — shade generation, CSS generation, theme processing",
   "type": "module",
   "exports": {
