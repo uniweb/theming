@@ -8,8 +8,14 @@
  * @module @uniweb/theming/section-overrides
  */
 
-import { generatePalettes } from './shade-generator.js'
+import { generatePalettes, isValidColor } from './shade-generator.js'
 import { normalizeTokenValue } from './normalize.js'
+import { closeToMarkup, isCssName, isCssValue } from './values.js'
+
+// A section's overrides are authored with the section, so every name and value
+// is held to what a stylesheet can hold, as the site's theme is (values.js) —
+// here without a warning: this runs as a page renders, where nothing reads one.
+const writable = (name, value) => isCssName(name) && isCssValue(value)
 
 /**
  * Build CSS variable declarations for base palette overrides — context-independent.
@@ -21,7 +27,23 @@ function buildPaletteVars(baseColors) {
   if (!baseColors || Object.keys(baseColors).length === 0) return []
 
   const vars = []
-  const palettes = generatePalettes(baseColors)
+  const colors = {}
+  for (const [name, value] of Object.entries(baseColors)) {
+    if (!isCssName(name)) continue
+    if (typeof value === 'string') {
+      if (isValidColor(value)) colors[name] = value
+    } else if (value && typeof value === 'object') {
+      if (value.base !== undefined) {
+        if (isValidColor(value.base)) colors[name] = value
+      } else {
+        // Pre-defined shades are written as given, so each is held to a value.
+        colors[name] = Object.fromEntries(
+          Object.entries(value).filter(([shade, v]) => /^\d+$/.test(shade) && isCssValue(v))
+        )
+      }
+    }
+  }
+  const palettes = generatePalettes(colors)
 
   for (const [name, shades] of Object.entries(palettes)) {
     for (const [level, value] of Object.entries(shades)) {
@@ -44,7 +66,9 @@ function buildElementVars(elements) {
   const vars = []
   for (const [token, value] of Object.entries(elements)) {
     if (value === '' || value == null) continue
-    vars.push(`  --${token}: ${normalizeTokenValue(value)};`)
+    const normalized = normalizeTokenValue(value)
+    if (!writable(token, normalized)) continue
+    vars.push(`  --${token}: ${normalized};`)
   }
   return vars
 }
@@ -61,6 +85,7 @@ function buildFoundationVars(styles) {
   const vars = []
   for (const [name, value] of Object.entries(styles)) {
     if (value === '' || value == null || typeof value === 'object') continue
+    if (!writable(name, value)) continue
     vars.push(`  --${name}: ${value};`)
   }
   return vars
@@ -151,7 +176,16 @@ export function buildSectionOverrides(blocks, appearance = {}) {
       css += buildSectionOverrides(block.childBlocks, appearance)
     }
   }
-  return css
+  // Written into a <style> in a prerendered page's <head> — see values.js.
+  return closeToMarkup(css)
+}
+
+/**
+ * A section's id as a CSS identifier: each character outside letters, digits,
+ * `_` and `-` escaped, so an authored id selects its section and nothing else.
+ */
+function cssIdent(id) {
+  return String(id).replace(/[^A-Za-z0-9_-]/gu, (c) => `\\${c.codePointAt(0).toString(16)} `)
 }
 
 /**
@@ -159,7 +193,7 @@ export function buildSectionOverrides(blocks, appearance = {}) {
  * light and under a dark scheme.
  */
 function buildBlockRules(block, appearance) {
-  const selector = `#section-${block.stableId || block.id}`
+  const selector = `#section-${cssIdent(block.stableId || block.id)}`
   const isAuto = !block.themeName
   const always = []
   const light = []

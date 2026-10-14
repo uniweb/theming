@@ -11,6 +11,7 @@
  */
 
 import { generatePalettes, formatOklch } from './shade-generator.js'
+import { closeToMarkup, escapeAttribute } from './values.js'
 
 // Default semantic tokens for each context
 // These map abstract concepts to specific palette values
@@ -377,7 +378,7 @@ function generateFontCSS(fontRoles = {}, fonts = {}, base = '/') {
 
       const mimeType = PRELOAD_TYPE[format]
       if (mimeType) {
-        linkTags.push(`<link rel="preload" href="${src}" as="font" type="${mimeType}" crossorigin>`)
+        linkTags.push(`<link rel="preload" href="${escapeAttribute(src)}" as="font" type="${mimeType}" crossorigin>`)
       }
     }
     if (cssLines.length > 0) {
@@ -397,7 +398,7 @@ function generateFontCSS(fontRoles = {}, fonts = {}, base = '/') {
         const filtered = filterGoogleFontsUrl(entry.url, usedFamilies)
         if (filtered) googleUrls.push(filtered)
       } else {
-        linkTags.push(`<link rel="stylesheet" href="${entry.url}">`)
+        linkTags.push(`<link rel="stylesheet" href="${escapeAttribute(entry.url)}">`)
         try {
           otherOrigins.add(new URL(entry.url).origin)
         } catch {
@@ -412,7 +413,7 @@ function generateFontCSS(fontRoles = {}, fonts = {}, base = '/') {
   // emitted below, alongside the merged css2 link. Emitting every font <link>
   // from one place keeps consumers from having to re-derive any of them.
   for (const origin of otherOrigins) {
-    linkTags.unshift(`<link rel="preconnect" href="${origin}">`)
+    linkTags.unshift(`<link rel="preconnect" href="${escapeAttribute(origin)}">`)
   }
 
   // Merge Google Fonts into a single <link> with preconnect
@@ -448,7 +449,9 @@ function generateFontCSS(fontRoles = {}, fonts = {}, base = '/') {
       linkTags.unshift(
         `<link rel="preconnect" href="https://fonts.googleapis.com">`,
         `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`,
-        `<link rel="stylesheet" href="${href}">`,
+        // The family names are the author's, decoded from their URL — escaped
+        // here, so a quote in one cannot open an attribute.
+        `<link rel="stylesheet" href="${escapeAttribute(href)}">`,
       )
     }
   }
@@ -648,7 +651,8 @@ export function generateThemeCSS(config = {}, options = {}) {
   }
 
   return {
-    css: sections.join('\n\n'),
+    // Written into a <style> in a prerendered page's <head> — see values.js.
+    css: closeToMarkup(sections.join('\n\n')),
     links: fontResult.links,
   }
 }

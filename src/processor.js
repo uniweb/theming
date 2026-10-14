@@ -11,6 +11,7 @@
 import { isValidColor, generatePalettes } from './shade-generator.js'
 import { getDefaultColors, getDefaultContextTokens } from './css-generator.js'
 import { normalizeTokenValue } from './normalize.js'
+import { isCssName, isCssProperty, isCssValue, isLoadableUrl, keepWritable } from './values.js'
 
 /**
  * Named neutral presets mapping to Tailwind gray families
@@ -477,6 +478,67 @@ function mergeFoundationVars(foundationVars = {}, siteVars = {}) {
 }
 
 /**
+ * The variables a stylesheet can hold: a name, and a value — for a context-aware
+ * one, a value per context. Anything else is left out, with a warning.
+ *
+ * @param {{ flat: Object, colorVars: Object }} merged - mergeFoundationVars' result
+ * @param {string[]} warnings
+ * @returns {{ flat: Object, colorVars: Object }}
+ */
+function keepWritableVars({ flat, colorVars }, warnings) {
+  const keptFlat = {}
+  for (const [name, cfg] of Object.entries(flat)) {
+    if (!isCssName(name)) {
+      warnings.push(`theme: vars: \`${name}\` is not a name a stylesheet can hold — left out`)
+      continue
+    }
+    const value = cfg?.default
+    if (value !== null && value !== undefined && value !== '' && !isCssValue(value)) {
+      warnings.push(`theme: vars.${name}: ${JSON.stringify(value)} is not a CSS value — left out`)
+      continue
+    }
+    keptFlat[name] = cfg
+  }
+  const keptColorVars = {}
+  for (const [name, byContext] of Object.entries(colorVars)) {
+    if (!isCssName(name)) {
+      warnings.push(`theme: vars: \`${name}\` is not a name a stylesheet can hold — left out`)
+      continue
+    }
+    keptColorVars[name] = keepWritable(byContext, `vars.${name}`, warnings, () => true)
+  }
+  return { flat: keptFlat, colorVars: keptColorVars }
+}
+
+/** A font import is a stylesheet a page loads, so its URL is one a page may load. */
+function keepLoadableImports(imports, warnings) {
+  if (!Array.isArray(imports)) return imports
+  return imports.filter((entry) => {
+    if (!entry?.url || isLoadableUrl(entry.url)) return true
+    warnings.push(`theme: fonts.import: ${JSON.stringify(entry.url)} is not a URL a page may load — left out`)
+    return false
+  })
+}
+
+const FONT_FORMATS = new Set(['woff2', 'woff', 'truetype', 'opentype'])
+
+/** A font face is written as an `@font-face` rule and a preload `<link>`. */
+function keepWritableFaces(faces, warnings) {
+  if (!Array.isArray(faces)) return faces
+  return faces.filter((face) => {
+    const ok =
+      face && typeof face === 'object' &&
+      (face.family === undefined || isCssValue(face.family)) &&
+      (face.src === undefined || isLoadableUrl(face.src)) &&
+      (face.weight === undefined || isCssValue(face.weight)) &&
+      (face.style === undefined || isCssValue(face.style)) &&
+      (face.format === undefined || FONT_FORMATS.has(face.format))
+    if (!ok) warnings.push(`theme: fonts.faces: ${JSON.stringify(face)} is not a face a stylesheet can hold — left out`)
+    return ok
+  })
+}
+
+/**
  * Process raw theme configuration into a complete, validated config
  *
  * @param {Object} rawConfig - Raw theme.yml content
@@ -524,9 +586,16 @@ export function processTheme(rawConfig = {}, options = {}) {
   // Filter to only valid colors (skip invalid ones in non-strict mode)
   const validColors = {}
   for (const [name, value] of Object.entries({ ...defaultColors, ...rawColors })) {
-    // Skip objects (pre-defined palettes) or invalid color strings
+    // A colour's name becomes `--<name>-<shade>`, so it is a name or nothing.
+    if (!isCssName(name)) {
+      warnings.push(`theme: colors: \`${name}\` is not a name a stylesheet can hold — left out`)
+      continue
+    }
+    // A pre-defined palette is written shade by shade, so each shade is a value.
     if (typeof value === 'object' && value !== null) {
-      validColors[name] = value
+      validColors[name] = value.base === undefined
+        ? keepWritable(value, `colors.${name}`, warnings, (shade) => /^\d+$/.test(shade))
+        : value
     } else if (isValidColor(value)) {
       validColors[name] = value
     }
@@ -560,7 +629,7 @@ export function processTheme(rawConfig = {}, options = {}) {
       normalized[token] = normalizeTokenValue(value)
     }
 
-    contexts[name] = { ...defaultContexts[name], ...normalized }
+    contexts[name] = { ...defaultContexts[name], ...keepWritable(normalized, `contexts.${name}`, warnings) }
   }
 
   // Fonts resolve into the font-role namespace after foundation vars are merged
@@ -575,9 +644,9 @@ export function processTheme(rawConfig = {}, options = {}) {
 
   // Merge foundation variables with site overrides
   // Splits into context-independent (flat) and context-aware (colorVars)
-  const { flat: mergedFoundationVars, colorVars } = mergeFoundationVars(
-    foundationVars,
-    rawConfig.vars || rawConfig.foundationVars || {}
+  const { flat: mergedFoundationVars, colorVars } = keepWritableVars(
+    mergeFoundationVars(foundationVars, rawConfig.vars || rawConfig.foundationVars || {}),
+    warnings
   )
 
   // Validate merged foundation vars
@@ -626,6 +695,10 @@ export function processTheme(rawConfig = {}, options = {}) {
   const FONT_LOADING_KEYS = new Set(['import', 'faces'])
   for (const [rawName, value] of Object.entries(rawFonts)) {
     if (FONT_LOADING_KEYS.has(rawName)) continue
+    if (!isCssName(rawName) || (value !== null && value !== undefined && !isCssValue(value))) {
+      warnings.push(`theme: fonts.${rawName}: ${JSON.stringify(value)} is not a font a stylesheet can hold — left out`)
+      continue
+    }
     const name = normalizeFontRoleName(rawName)
     const existing = fontRoles[name]
     fontRoles[name] = {
@@ -654,8 +727,8 @@ export function processTheme(rawConfig = {}, options = {}) {
 
   // config.fonts: name→value (for the Theme API) plus import/faces (loading).
   const fonts = {}
-  if (rawFonts.import !== undefined) fonts.import = rawFonts.import
-  if (rawFonts.faces !== undefined) fonts.faces = rawFonts.faces
+  if (rawFonts.import !== undefined) fonts.import = keepLoadableImports(rawFonts.import, warnings)
+  if (rawFonts.faces !== undefined) fonts.faces = keepWritableFaces(rawFonts.faces, warnings)
   for (const [name, role] of Object.entries(fontRoles)) {
     fonts[name] = role.value
   }
@@ -670,13 +743,29 @@ export function processTheme(rawConfig = {}, options = {}) {
   // fifteen, and the theme it named would be overridden in full by values it
   // never asked for. Whoever renders code owns the default; this only carries
   // what the site said.
-  const code = rawConfig.code ?? null
+  const code = rawConfig.code && typeof rawConfig.code === 'object'
+    ? keepWritable(rawConfig.code, 'code', warnings)
+    : rawConfig.code ?? null
 
   // Site background (pass through as CSS value)
-  const background = rawConfig.background || null
+  let background = rawConfig.background || null
+  if (background !== null && !isCssValue(background)) {
+    warnings.push(`theme: background: ${JSON.stringify(background)} is not a CSS value — left out`)
+    background = null
+  }
 
-  // Inline text styles (semantic names → CSS declarations)
-  const inline = mergeInlineStyles(DEFAULT_INLINE, rawConfig.inline)
+  // Inline text styles (semantic names → CSS declarations). A name is written as
+  // `span[<name>]`, each property as a declaration.
+  const inline = {}
+  for (const [name, styles] of Object.entries(mergeInlineStyles(DEFAULT_INLINE, rawConfig.inline))) {
+    if (!isCssName(name)) {
+      warnings.push(`theme: inline: \`${name}\` is not a style name — left out`)
+      continue
+    }
+    inline[name] = styles && typeof styles === 'object'
+      ? keepWritable(styles, `inline.${name}`, warnings, isCssProperty)
+      : styles
+  }
 
   const config = {
     colors,      // Raw colors for CSS generator

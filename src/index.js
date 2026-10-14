@@ -41,6 +41,10 @@ export {
 // Value normalization
 export { normalizeTokenValue } from './normalize.js'
 
+// What a theme value and name may be — one rule for the stylesheet and anything
+// else that writes a theme value into a page (values.js)
+export { isCssValue, isCssName, isLoadableUrl } from './values.js'
+
 // Section override CSS
 export { buildSectionOverrides } from './section-overrides.js'
 
