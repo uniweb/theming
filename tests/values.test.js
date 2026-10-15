@@ -20,6 +20,8 @@ describe('what a value may be', () => {
     '#fff', 'rgb(1, 2, 3)', 'oklch(70% 0.1 200 / 50%)', 'var(--primary-500)', '1.5rem', 'calc(100% - 2rem)',
     '"Inter", system-ui, sans-serif', 'linear-gradient(to right, #fff 0%, rgba(0,0,0,.5) 100%)',
     'url(/images/bg.jpg) center / cover', 'url("https://cdn.test/a.png")', 400,
+    // An editor's switch saves a variable as a boolean, written `true` / `false`.
+    true, false,
   ])('%j is a value', (v) => expect(isCssValue(v)).toBe(true))
 
   it.each([
@@ -47,6 +49,22 @@ describe('what a value may be', () => {
     expect(closeToMarkup('a</style><script>')).not.toContain('<')
     expect(closeToMarkup('content: "<"')).toBe('content: "\\3c "')
     expect(escapeAttribute('a"b&c<d')).toBe('a&quot;b&amp;c&lt;d')
+  })
+})
+
+describe('a font face', () => {
+  const face = (format) => ({ family: 'Mine', src: '/fonts/mine.x', weight: 400, style: 'normal', format })
+
+  it('keeps every format name CSS defines', () => {
+    const formats = ['woff2', 'woff', 'truetype', 'opentype', 'embedded-opentype', 'svg', 'collection']
+    const { config } = processTheme({ fonts: { faces: formats.map(face) } })
+    expect(config.fonts.faces.map((f) => f.format)).toEqual(formats)
+  })
+
+  it('leaves out a format that is not one, and says so', () => {
+    const { config, warnings } = processTheme({ fonts: { faces: [face("woff2') format('x"), face('eot')] } })
+    expect(config.fonts.faces).toEqual([])
+    expect(warnings.filter((w) => w.startsWith('theme: fonts.faces:'))).toHaveLength(2)
   })
 })
 

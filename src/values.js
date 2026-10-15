@@ -37,15 +37,21 @@ export function isLoadableUrl(url) {
 }
 
 /**
- * Whether a value may be written as a CSS value: a finite number, or a string
+ * Whether a value may be written as a CSS value: a finite number, a boolean —
+ * written `true` or `false`, as an editor's switch saves a variable — or a string
  * that cannot end its declaration, its rule or its element, and whose every
  * `url(…)` is loadable.
+ *
+ * ⛔ *Until 2026-10-15 a boolean was refused, so a switch's variable was left out
+ * of the stylesheet — though it can end nothing, and was written as `true` before
+ * this rule existed.*
  *
  * @param {*} value
  * @returns {boolean}
  */
 export function isCssValue(value) {
   if (typeof value === 'number') return Number.isFinite(value)
+  if (typeof value === 'boolean') return true
   if (typeof value !== 'string') return false
   if (CONTROL.test(value) || ENDS_A_VALUE.test(value) || RUNS.test(value)) return false
   for (const [, , url] of value.matchAll(URL_IN_A_VALUE)) {

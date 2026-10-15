@@ -520,7 +520,12 @@ function keepLoadableImports(imports, warnings) {
   })
 }
 
-const FONT_FORMATS = new Set(['woff2', 'woff', 'truetype', 'opentype'])
+/**
+ * The format names CSS defines for a face's `format()` — a closed list, so a face's
+ * `format` can only ever be one of these words. ⛔ *Until 2026-10-15 it held four of
+ * the seven, and an `.eot` face (`embedded-opentype`) was left out.*
+ */
+const FONT_FORMATS = new Set(['woff2', 'woff', 'truetype', 'opentype', 'embedded-opentype', 'svg', 'collection'])
 
 /** A font face is written as an `@font-face` rule and a preload `<link>`. */
 function keepWritableFaces(faces, warnings) {
