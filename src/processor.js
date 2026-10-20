@@ -12,6 +12,7 @@ import { isValidColor, generatePalettes } from './shade-generator.js'
 import { getDefaultColors, getDefaultContextTokens } from './css-generator.js'
 import { normalizeTokenValue } from './normalize.js'
 import { isCssName, isCssProperty, isCssValue, isLoadableUrl, keepWritable } from './values.js'
+import { validateCodeTheme, keepWritableCode } from './code-theme.js'
 
 /**
  * Named neutral presets mapping to Tailwind gray families
@@ -245,35 +246,6 @@ function validateAppearance(appearance) {
           errors.push(`Invalid scheme: ${scheme}. Valid schemes: ${validSchemes.join(', ')}`)
         }
       }
-    }
-  }
-
-  return { valid: errors.length === 0, errors }
-}
-
-/**
- * Validate code block theme configuration
- *
- * @param {Object} code - Code theme configuration
- * @returns {{ valid: boolean, errors: string[] }}
- */
-function validateCodeTheme(code) {
-  const errors = []
-
-  if (!code || typeof code !== 'object') {
-    return { valid: true, errors } // No code config is valid (use defaults)
-  }
-
-  // Validate color values
-  for (const [name, value] of Object.entries(code)) {
-    if (typeof value !== 'string') {
-      errors.push(`code.${name} must be a string, got ${typeof value}`)
-      continue
-    }
-
-    // Basic color format check (hex, rgb, hsl, or color name)
-    if (!isValidColor(value)) {
-      errors.push(`code.${name} has invalid color value: ${value}`)
     }
   }
 
@@ -747,10 +719,9 @@ export function processTheme(rawConfig = {}, options = {}) {
   // site naming a bundled theme and overriding one colour would arrive carrying
   // fifteen, and the theme it named would be overridden in full by values it
   // never asked for. Whoever renders code owns the default; this only carries
-  // what the site said.
-  const code = rawConfig.code && typeof rawConfig.code === 'object'
-    ? keepWritable(rawConfig.code, 'code', warnings)
-    : rawConfig.code ?? null
+  // what the site said — less what a stylesheet could not hold, side by side
+  // for a pair (`keepWritableCode`, code-theme.js).
+  const code = keepWritableCode(rawConfig.code, warnings)
 
   // Site background (pass through as CSS value)
   let background = rawConfig.background || null
