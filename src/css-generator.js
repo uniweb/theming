@@ -473,7 +473,7 @@ function generateFontCSS(fontRoles = {}, fonts = {}, base = '/') {
   // --- Apply font families to elements ---
   // Defining --font-* on :root is not enough — something must set `font-family`
   // on rendered elements, the same way colors get an application rule
-  // ([id^="section-"] { background-color: var(--section) }). The processor has
+  // ([id^="section-"]:not([data-uw-background="self"]) { background-color: var(--section) }). The processor has
   // already resolved which roles apply (`role.apply`): a built-in role applies
   // only when the site set it (don't stomp a foundation's own typography with
   // system-ui); a foundation-owned/redefined role applies always via its
@@ -590,7 +590,12 @@ export function generateThemeCSS(config = {}, options = {}) {
   const lightColorVars = colorVars.light || {}
   const defaultTokens = { ...DEFAULT_CONTEXT_TOKENS.light, ...(contexts.light || {}), ...lightColorVars }
   const defaultVars = generateVarDeclarations(defaultTokens)
-  sections.push(`/* Default Semantic Tokens */\n:root {\n${defaultVars}\n}\n\n/* Section backgrounds — applied once, resolves via context tokens */\n[id^="section-"] {\n  background-color: var(--section);\n}`)
+  // ⭐ A section type that declares `background: 'self'` paints everything behind its content, its
+  // context's surface included: the runtime marks its wrapper `data-uw-background="self"`, and this
+  // rule leaves it unpainted, so a panel narrower than its section sits on the page's own surface.
+  // ⛔ Until 2026-11-06 the rule painted every wrapper, so `'self'` covered the author's background
+  // layer and not the surface, and a panel foundation cleared the band with a rule of its own.
+  sections.push(`/* Default Semantic Tokens */\n:root {\n${defaultVars}\n}\n\n/* Section backgrounds — applied once, resolves via context tokens */\n[id^="section-"]:not([data-uw-background="self"]) {\n  background-color: var(--section);\n}`)
 
   // 4. Context classes
   const contextCSS = [

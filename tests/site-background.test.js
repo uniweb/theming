@@ -50,4 +50,11 @@ describe('site background', () => {
     expect(css).toContain('[id^="section-"]')
     expect(css).toContain('background-color: var(--section)')
   })
+
+  it("⭐ leaves a `background: 'self'` section unpainted: it paints what is behind its content (2026-11-06)", () => {
+    const css = cssFor({})
+    // The one rule painting a section's surface skips the wrapper the runtime marks.
+    expect(css).toMatch(/\[id\^="section-"\]:not\(\[data-uw-background="self"\]\) \{\s*background-color: var\(--section\);/)
+    expect(css.match(/background-color: var\(--section\)/g)).toHaveLength(1)
+  })
 })
