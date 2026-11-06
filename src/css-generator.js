@@ -473,7 +473,7 @@ function generateFontCSS(fontRoles = {}, fonts = {}, base = '/') {
   // --- Apply font families to elements ---
   // Defining --font-* on :root is not enough — something must set `font-family`
   // on rendered elements, the same way colors get an application rule
-  // ([id^="section-"]:not([data-uw-background="self"]) { background-color: var(--section) }). The processor has
+  // ([id^="section-"] { background-color: var(--section) }). The processor has
   // already resolved which roles apply (`role.apply`): a built-in role applies
   // only when the site set it (don't stomp a foundation's own typography with
   // system-ui); a foundation-owned/redefined role applies always via its
@@ -593,9 +593,13 @@ export function generateThemeCSS(config = {}, options = {}) {
   // ⭐ A section type that declares `background: 'self'` paints everything behind its content, its
   // context's surface included: the runtime marks its wrapper `data-uw-background="self"`, and this
   // rule leaves it unpainted, so a panel narrower than its section sits on the page's own surface.
+  // ⭐ The exclusion weighs nothing (`:where`), so the rule stays (0,1,0), as it was before it had
+  // one: a foundation's own rule for its sections (`.canvas-plain section`, a class beside the id)
+  // still wins. Sites get this file from the runtime at their next publish, foundation unchanged.
   // ⛔ Until 2026-11-06 the rule painted every wrapper, so `'self'` covered the author's background
-  // layer and not the surface, and a panel foundation cleared the band with a rule of its own.
-  sections.push(`/* Default Semantic Tokens */\n:root {\n${defaultVars}\n}\n\n/* Section backgrounds — applied once, resolves via context tokens */\n[id^="section-"]:not([data-uw-background="self"]) {\n  background-color: var(--section);\n}`)
+  // layer and not the surface, and a panel foundation cleared the band with a rule of its own. For
+  // part of that day the exclusion was a plain `:not([…])`, (0,2,0), which beat those rules.
+  sections.push(`/* Default Semantic Tokens */\n:root {\n${defaultVars}\n}\n\n/* Section backgrounds — applied once, resolves via context tokens */\n[id^="section-"]:not(:where([data-uw-background="self"])) {\n  background-color: var(--section);\n}`)
 
   // 4. Context classes
   const contextCSS = [

@@ -54,7 +54,15 @@ describe('site background', () => {
   it("⭐ leaves a `background: 'self'` section unpainted: it paints what is behind its content (2026-11-06)", () => {
     const css = cssFor({})
     // The one rule painting a section's surface skips the wrapper the runtime marks.
-    expect(css).toMatch(/\[id\^="section-"\]:not\(\[data-uw-background="self"\]\) \{\s*background-color: var\(--section\);/)
+    expect(css).toMatch(/\[id\^="section-"\]:not\(:where\(\[data-uw-background="self"\]\)\) \{\s*background-color: var\(--section\);/)
     expect(css.match(/background-color: var\(--section\)/g)).toHaveLength(1)
+  })
+
+  it("⭐ weighs (0,1,0), as before the exclusion: a foundation's own section rule still wins", () => {
+    const css = cssFor({})
+    // `:where()` adds nothing, so `.canvas-plain section` (0,1,1) beats it, as it always did. A plain
+    // `:not([…])` weighs as its attribute, (0,2,0), and for part of 2026-11-06 painted those sections.
+    const selector = css.match(/(\S+) \{\s*background-color: var\(--section\);/)[1]
+    expect(selector).toBe('[id^="section-"]:not(:where([data-uw-background="self"]))')
   })
 })
