@@ -66,3 +66,13 @@ describe('site background', () => {
     expect(selector).toBe('[id^="section-"]:not(:where([data-uw-background="self"]))')
   })
 })
+
+describe('the section a header lies over (2026-11-06)', () => {
+  it('⭐ is padded by the measured height, else the declared one, only where a header box lies over the page', () => {
+    const css = cssFor({})
+    // the runtime marks the section `data-uw-under-header` and gives it `--uw-header-declared`, and the
+    // header's box `data-uw-header="over"`, which a layout that draws no header never renders
+    expect(css).toMatch(/\[data-uw-under-header\] \{\s*--uw-header-height: 0px;\s*\}/)
+    expect(css).toMatch(/:root:has\(\[data-uw-header="over"\]\) \[data-uw-under-header\] \{\s*--uw-header-height: var\(--uw-header-measured, var\(--uw-header-declared, 0px\)\);\s*\}/)
+  })
+})

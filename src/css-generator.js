@@ -601,6 +601,12 @@ export function generateThemeCSS(config = {}, options = {}) {
   // part of that day the exclusion was a plain `:not([…])`, (0,2,0), which beat those rules.
   sections.push(`/* Default Semantic Tokens */\n:root {\n${defaultVars}\n}\n\n/* Section backgrounds — applied once, resolves via context tokens */\n[id^="section-"]:not(:where([data-uw-background="self"])) {\n  background-color: var(--section);\n}`)
 
+  // ⭐ The section a header lies over (`underHeader`, marked by the runtime) clears it by
+  // `--uw-header-height`: what the browser measured, else the header type's declared height, on a
+  // page where a header box lies over it, and nothing on one where the layout drew no header. A
+  // rule, since only the rendered page holds that answer, so the first paint pads by what is there.
+  sections.push(`/* The section under the header clears it — by nothing where no header lies over it */\n[data-uw-under-header] {\n  --uw-header-height: 0px;\n}\n:root:has([data-uw-header="over"]) [data-uw-under-header] {\n  --uw-header-height: var(--uw-header-measured, var(--uw-header-declared, 0px));\n}`)
+
   // 4. Context classes
   const contextCSS = [
     generateContextCSS('light', contexts.light, colorVars),
