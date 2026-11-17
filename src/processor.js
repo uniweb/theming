@@ -26,6 +26,15 @@ const NEUTRAL_PRESETS = {
 }
 
 /**
+ * The names a bracket writes for a mark of its own rather than a style (content-reader's
+ * `MARK_NAMES`, 2026-11-17): `[x]{underline}`, `[2]{sup}`, `[2]{sub}`. A style by one of them
+ * would never apply, so the theme leaves it out and says so. Kept here, as theming has no
+ * dependencies.
+ */
+const MARK_NAMES = { underline: 'underline', sup: 'superscript', sub: 'subscript' }
+const MARK_ELEMENTS = { underline: 'u', superscript: 'sup', subscript: 'sub' }
+
+/**
  * Default inline text styles (content-author markdown: [text]{accent})
  * These reference semantic tokens so they adapt to context automatically
  *
@@ -736,6 +745,11 @@ export function processTheme(rawConfig = {}, options = {}) {
   for (const [name, styles] of Object.entries(mergeInlineStyles(DEFAULT_INLINE, rawConfig.inline))) {
     if (!isCssName(name)) {
       warnings.push(`theme: inline: \`${name}\` is not a style name — left out`)
+      continue
+    }
+    const mark = MARK_NAMES[name.toLowerCase()]
+    if (mark) {
+      warnings.push(`theme: inline: \`${name}\` is ${mark}, a mark of its own — \`[text]{${name.toLowerCase()}}\` is drawn as <${MARK_ELEMENTS[mark]}>, never a styled span — left out`)
       continue
     }
     inline[name] = styles && typeof styles === 'object'
